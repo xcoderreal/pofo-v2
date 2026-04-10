@@ -84,12 +84,25 @@ smoke port=env_var_or_default("MYAPP_PORT", "8090"):
 build-web:
     cd apps/mobile && npx expo export --platform web
 
-# `just clean` = wipe build output and Metro cache. Safe — doesn't touch
-# source or node_modules themselves. Run this when you suspect a stale
-# bundle (e.g. UI renders old content after a source edit).
+# `just clean` = wipe build output and ALL Metro caches, including the ones
+# Metro parks in $TMPDIR (which project-local cleanup misses). Run this when
+# you suspect a stale bundle — it's equivalent to passing --clear at startup.
+# Safe: doesn't touch source, node_modules, or venvs.
 clean:
+    #!/usr/bin/env bash
+    set -euo pipefail
     rm -rf apps/mobile/dist apps/mobile/.expo apps/mobile/node_modules/.cache .turbo
-    @echo "cleaned: dist, .expo, metro cache, .turbo"
+    # Metro's transform + haste-map caches live in $TMPDIR. Globs that match
+    # nothing would error under set -e, so we guard with shopt + explicit checks.
+    TMPBASE="${TMPDIR:-/tmp}"
+    shopt -s nullglob
+    METRO_CACHES=("$TMPBASE"/metro-* "$TMPBASE"/haste-map-*)
+    if (( ${#METRO_CACHES[@]} > 0 )); then
+        rm -rf "${METRO_CACHES[@]}"
+        echo "cleaned: dist, .expo, .turbo, project metro cache, $TMPBASE/metro-*, $TMPBASE/haste-map-*"
+    else
+        echo "cleaned: dist, .expo, .turbo, project metro cache (no tmp metro caches to clear)"
+    fi
 
 # `just dev-web-clean` = start web dev server with Metro cache cleared.
 # Use when `just dev` shows stale content that doesn't match your source.
