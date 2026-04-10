@@ -102,6 +102,21 @@ api:
 api-setup:
     cd apps/api && uv sync --all-extras
 
+# `just kill-api` = free the backend port. Run this when you see
+# "Address already in use" or "EADDRINUSE" starting the backend.
+# Accepts an optional port arg; defaults to MYAPP_PORT then 8090.
+kill-api port=env_var_or_default("MYAPP_PORT", "8090"):
+    #!/usr/bin/env bash
+    PIDS=$(lsof -i :{{port}} -t 2>/dev/null || true)
+    if [ -z "$PIDS" ]; then
+        echo "port {{port}} is free"
+    else
+        echo "killing $(echo $PIDS | wc -w | tr -d ' ') process(es) on port {{port}}: $PIDS"
+        echo "$PIDS" | xargs kill 2>/dev/null || true
+        sleep 0.3
+        echo "port {{port}} freed"
+    fi
+
 # ─── Scaffolding: fork this skeleton into a new project ──────
 # Usage: just new-project my_app
 #   - Renames Python package 'myapp' → 'my_app' everywhere
