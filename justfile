@@ -78,6 +78,24 @@ smoke port=env_var_or_default("MYAPP_PORT", "8090"):
     curl -fsS "$BASE/items?tag=t1" | grep -q '"id":"smoke"'
     echo "smoke test passed"
 
+# ─── Build artifacts ─────────────────────────────────────────
+# `just build-web` = produce the static web bundle (matches Vercel's build).
+# Uses `npx` (not `bunx`) because Metro doesn't exit cleanly under bun.
+build-web:
+    cd apps/mobile && npx expo export --platform web
+
+# `just clean` = wipe build output and Metro cache. Safe — doesn't touch
+# source or node_modules themselves. Run this when you suspect a stale
+# bundle (e.g. UI renders old content after a source edit).
+clean:
+    rm -rf apps/mobile/dist apps/mobile/.expo apps/mobile/node_modules/.cache .turbo
+    @echo "cleaned: dist, .expo, metro cache, .turbo"
+
+# `just dev-web-clean` = start web dev server with Metro cache cleared.
+# Use when `just dev` shows stale content that doesn't match your source.
+dev-web-clean:
+    cd apps/mobile && bunx expo start --web --port 8091 --host lan --clear
+
 # ─── Backend app shortcuts ────────────────────────────────────
 api:
     cd apps/api && uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port ${MYAPP_PORT:-8090}

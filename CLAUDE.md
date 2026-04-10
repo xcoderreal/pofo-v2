@@ -44,6 +44,17 @@ Mimic the existing `Item` / `ItemRepository` / `ItemService` / routes as your te
 - **Integration tests use fixtures, not module-level overrides.** See `tests/test_api.py` — the `client` fixture installs a fresh `FakeItemRepository` for each test so state doesn't leak across tests but *does* persist across requests within a test.
 - **Every new endpoint gets a round-trip test.** POST → GET → see it. This is what `dependency_overrides` + fixtures enable.
 
+## Frontend — stale Metro bundles are a common trap
+
+If the user reports that UI changes aren't showing up, or that the page shows content that doesn't match the source (wrong header, wrong empty state, wrong text), **assume a stale Metro bundle before debugging the code**. Expo caches aggressively and a hot reload isn't always enough.
+
+Recovery:
+- `just clean` to wipe Metro cache, `.expo/`, and `dist/`
+- `just dev-web-clean` to start the dev server with `--clear`
+- Tell the user to hard-reload the browser (Cmd+Shift+R on macOS)
+
+Only dig into the source if a fresh bundle still shows the wrong content.
+
 ## Frontend — Expo SDK 54 pinned versions are load-bearing
 
 `docs/pinned-versions.md` documents every critical version pin and the specific breakage each prevents. Before running `bun add` or `expo install` on a native/Expo package:
