@@ -3,7 +3,10 @@ from myapp.domain.repository import ItemRepository
 
 
 class MemoryItemRepository(ItemRepository):
-    """In-memory repository — useful for development and as a reference implementation."""
+    """In-memory repository.
+
+    Useful for development and as a reference implementation.
+    """
 
     def __init__(self, items: list[Item] | None = None):
         self._items: list[Item] = list(items or [])

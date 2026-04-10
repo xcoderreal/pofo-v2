@@ -7,11 +7,13 @@ from tests.fake_repository import FakeItemRepository
 
 @pytest.fixture
 def repo():
-    return FakeItemRepository([
-        Item(id="1", name="Alpha", tags=["a", "b"]),
-        Item(id="2", name="Beta", tags=["b", "c"]),
-        Item(id="3", name="Gamma", tags=["a"]),
-    ])
+    return FakeItemRepository(
+        [
+            Item(id="1", name="Alpha", tags=["a", "b"]),
+            Item(id="2", name="Beta", tags=["b", "c"]),
+            Item(id="3", name="Gamma", tags=["a"]),
+        ]
+    )
 
 
 @pytest.fixture
