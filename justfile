@@ -84,25 +84,14 @@ smoke port=env_var_or_default("MYAPP_PORT", "8090"):
 build-web:
     cd apps/mobile && npx expo export --platform web
 
-# `just clean` = wipe build output and ALL Metro caches, including the ones
-# Metro parks in $TMPDIR (which project-local cleanup misses). Run this when
-# you suspect a stale bundle — it's equivalent to passing --clear at startup.
-# Safe: doesn't touch source, node_modules, or venvs.
+# `just clean` = wipe build output and Metro caches (project + $TMPDIR).
+# Safe: doesn't touch source, node_modules, or venvs. If you see stale
+# content after cleaning, orphan Metro is probably regenerating caches —
+# run `just kill` first.
 clean:
-    #!/usr/bin/env bash
-    set -euo pipefail
     rm -rf apps/mobile/dist apps/mobile/.expo apps/mobile/node_modules/.cache .turbo
-    # Metro's transform + haste-map caches live in $TMPDIR. Globs that match
-    # nothing would error under set -e, so we guard with shopt + explicit checks.
-    TMPBASE="${TMPDIR:-/tmp}"
-    shopt -s nullglob
-    METRO_CACHES=("$TMPBASE"/metro-* "$TMPBASE"/haste-map-*)
-    if (( ${#METRO_CACHES[@]} > 0 )); then
-        rm -rf "${METRO_CACHES[@]}"
-        echo "cleaned: dist, .expo, .turbo, project metro cache, $TMPBASE/metro-*, $TMPBASE/haste-map-*"
-    else
-        echo "cleaned: dist, .expo, .turbo, project metro cache (no tmp metro caches to clear)"
-    fi
+    rm -rf "${TMPDIR:-/tmp}"/metro-* "${TMPDIR:-/tmp}"/haste-map-* 2>/dev/null || true
+    @echo "cleaned"
 
 # `just dev-web-clean` = start web dev server with Metro cache cleared.
 # Use when `just dev` shows stale content that doesn't match your source.
@@ -115,20 +104,13 @@ api:
 api-setup:
     cd apps/api && uv sync --all-extras
 
-# `just kill-api` = free the backend port. Run this when you see
-# "Address already in use" or "EADDRINUSE" starting the backend.
-# Accepts an optional port arg; defaults to MYAPP_PORT then 8090.
-kill-api port=env_var_or_default("MYAPP_PORT", "8090"):
-    #!/usr/bin/env bash
-    PIDS=$(lsof -i :{{port}} -t 2>/dev/null || true)
-    if [ -z "$PIDS" ]; then
-        echo "port {{port}} is free"
-    else
-        echo "killing $(echo $PIDS | wc -w | tr -d ' ') process(es) on port {{port}}: $PIDS"
-        echo "$PIDS" | xargs kill 2>/dev/null || true
-        sleep 0.3
-        echo "port {{port}} freed"
-    fi
+# `just kill` = stop any running dev servers (backend + frontend web).
+# Run this when ports are stuck ("Address already in use"), or when
+# orphan Metro is regenerating stale caches.
+kill:
+    -lsof -i :${MYAPP_PORT:-8090} -t 2>/dev/null | xargs kill 2>/dev/null
+    -lsof -i :8091 -t 2>/dev/null | xargs kill 2>/dev/null
+    @echo "killed dev servers (backend ${MYAPP_PORT:-8090}, web 8091)"
 
 # ─── Scaffolding: fork this skeleton into a new project ──────
 # Usage: just new-project my_app
