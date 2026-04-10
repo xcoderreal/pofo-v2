@@ -66,15 +66,27 @@ turbo-skeleton/
 ### Via `just` (recommended)
 
 ```bash
-just install     # bun install + uv sync
-just dev         # turbo dev:web (frontend + backend, TUI)
-just dev-ios     # turbo dev:ios
-just api         # backend only (uvicorn, port 8090)
-just api-test    # pytest
-just api-lint    # ruff check
-just api-format  # ruff format
-just api-setup   # uv sync --all-extras
+# Setup & dev
+just install       # bun install + uv sync
+just dev           # turbo dev:web (frontend + backend, TUI)
+just dev-ios       # turbo dev:ios
+just api           # backend only (uvicorn, port 8090)
+
+# Repo-wide (runs across both apps)
+just test          # pytest + tsc --noEmit
+just check         # lint + format-check (read-only, matches CI)
+just fmt           # apply formatters (ruff format + expo lint --fix)
+just lint          # lint only
+
+# Per-app
+just test-api      just test-mobile
+just lint-api      just lint-mobile
+just fmt-api       just fmt-mobile
+just fmt-api-check just fmt-mobile-check
+just lint-api-fix
 ```
+
+Run `just --list` to see all recipes.
 
 ### Direct commands
 

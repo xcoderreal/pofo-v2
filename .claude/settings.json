@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(just test)",
+      "Bash(just test-api)",
+      "Bash(just test-mobile)",
+      "Bash(just check)",
+      "Bash(just lint)",
+      "Bash(just lint-api)",
+      "Bash(just lint-api-fix)",
+      "Bash(just lint-mobile)",
+      "Bash(just fmt)",
+      "Bash(just fmt-api)",
+      "Bash(just fmt-api-check)",
+      "Bash(just fmt-mobile)",
+      "Bash(just fmt-mobile-check)",
+      "Bash(just fmt-check)"
+    ]
+  }
+}
