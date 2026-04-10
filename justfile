@@ -47,3 +47,11 @@ api:
     cd apps/api && uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port 8090
 api-setup:
     cd apps/api && uv sync --all-extras
+
+# ─── Scaffolding: fork this skeleton into a new project ──────
+# Usage: just new-project my_app
+#   - Renames Python package 'myapp' → 'my_app' everywhere
+#   - Updates env prefix, Expo slug, bundle id, display name
+#   - Does NOT touch README.md or docs/ (review by hand)
+new-project slug:
+    python3 scripts/init-project.py {{slug}}
