@@ -58,6 +58,7 @@ FILES = [
     "apps/api/tests/test_item_service.py",
     "apps/mobile/package.json",
     "apps/mobile/app.json",
+    "apps/mobile/app/_layout.tsx",
 ]
 
 
