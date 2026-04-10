@@ -44,12 +44,17 @@ lint-mobile:
 
 # ─── Full health check ───────────────────────────────────────
 # `just verify` = test + check + live API smoke test end-to-end.
-verify: test check smoke
+# Optional positional port arg falls back to $MYAPP_PORT then 8090:
+#   just verify           # default port
+#   just verify 9191      # custom port
+#   MYAPP_PORT=9191 just verify   # also works
+verify port=env_var_or_default("MYAPP_PORT", "8090"): test check
+    just smoke {{port}}
 
-smoke:
+smoke port=env_var_or_default("MYAPP_PORT", "8090"):
     #!/usr/bin/env bash
     set -euo pipefail
-    PORT=${MYAPP_PORT:-8090}
+    PORT={{port}}
     echo "==> smoke: using port $PORT"
     lsof -i :$PORT -t | xargs kill 2>/dev/null || true
     cd apps/api
