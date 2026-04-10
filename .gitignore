@@ -12,6 +12,10 @@ __pycache__/
 # Env
 .env
 .env.local
+.env*.local
+
+# Vercel CLI link file
+.vercel/
 
 # OS
 .DS_Store

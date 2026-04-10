@@ -161,14 +161,78 @@ See [`docs/architecture.md`](docs/architecture.md) for the full rationale behind
 
 ## Deployment
 
-Push to `main` triggers:
-- **Frontend CI** (`apps/mobile/**` changes): lint, typecheck, build-web
-- **Backend CI** (`apps/api/**` changes): ruff lint/format, pytest
-- **Backend deploy** (`apps/api/**` changes): Vercel production deploy
+Single Vercel project hosts both frontend (static) and backend (Python serverless). See `vercel.json`.
 
-Required GitHub secrets for Vercel deploy: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
+### First-time setup: link the repo to a Vercel project
 
-See `vercel.json` for the build command (single project serves both frontend and backend).
+```bash
+# 1. Install the CLI (one-time, globally)
+bun add -g vercel    # or: npm i -g vercel
+
+# 2. Log in (opens browser)
+vercel login
+
+# 3. Link this repo to a Vercel project (creates .vercel/project.json — gitignored)
+vercel link
+# Answers: scope → your account, link to existing → N, project name → turbo-skeleton
+```
+
+### Environment variables (optional — skeleton has none required)
+
+The skeleton has no required runtime secrets. If/when you add some:
+
+```bash
+# Copy the template for local dev
+cp .env.sample .env
+# Edit .env with real values
+
+# Push env vars to Vercel (per environment)
+vercel env add MYAPP_SECRET_KEY production
+vercel env add MYAPP_SECRET_KEY preview
+vercel env add MYAPP_SECRET_KEY development
+
+# Pull Vercel's env vars into a local .env.local (for `vercel dev`)
+vercel env pull .env.local
+```
+
+### E2E test against a Vercel preview deploy
+
+```bash
+# Deploy a preview (returns a unique URL like https://turbo-skeleton-abc123.vercel.app)
+vercel
+
+# Smoke test the deployed API
+export URL=https://turbo-skeleton-abc123.vercel.app
+curl $URL/api/health
+curl -X POST $URL/api/items \
+  -H "Content-Type: application/json" \
+  -d '{"id":"hello","name":"Hello World","description":"deployed","tags":["welcome"]}'
+curl $URL/api/items
+
+# Then open $URL in a browser — frontend should render the item
+```
+
+Note: `/api/*` hits the serverless function; everything else serves the static Expo web build. This is wired via the rewrite rule in `vercel.json`.
+
+### Production deploy
+
+```bash
+vercel --prod
+```
+
+Or: push to `main`, and the GitHub Actions workflow (`deploy-backend.yml`) deploys automatically when `apps/api/**` files change. For that you need these secrets set in GitHub (Settings → Secrets → Actions):
+
+- `VERCEL_TOKEN` — create at https://vercel.com/account/tokens
+- `VERCEL_ORG_ID` — from `.vercel/project.json` after `vercel link`
+- `VERCEL_PROJECT_ID` — from `.vercel/project.json` after `vercel link`
+
+### CI summary
+
+| Workflow | Trigger | Does |
+|---|---|---|
+| `frontend.yml` | `apps/mobile/**` | lint, typecheck, build-web |
+| `backend.yml` | `apps/api/**` | ruff, pytest |
+| `deploy-backend.yml` | push to `main` + `apps/api/**` | `vercel --prod` |
 
 ## Gotchas
 
