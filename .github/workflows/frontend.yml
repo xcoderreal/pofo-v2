@@ -1,0 +1,55 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main]
+    paths: [apps/mobile/**]
+  pull_request:
+    paths: [apps/mobile/**]
+
+defaults:
+  run:
+    working-directory: apps/mobile
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+        working-directory: .
+
+      - run: bunx expo lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+        working-directory: .
+
+      - run: bunx tsc --noEmit
+
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+        working-directory: .
+
+      - run: bunx expo export --platform web

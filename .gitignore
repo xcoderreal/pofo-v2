@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.venv/
+
+# Build
+dist/
+.expo/
+.next/
+*.pyc
+__pycache__/
+
+# Env
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Turbo
+.turbo/
+
+# UV
+uv.lock
+
+# Bun
+bun.lock
+
+# Vercel (pip install -t api/)
+api/*.dist-info/
+api/*.egg-info/
+api/fastapi/
+api/pydantic/
+api/pydantic_settings/
+api/starlette/
+api/uvicorn/
+api/pyyaml/
+api/yaml/
