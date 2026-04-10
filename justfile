@@ -42,9 +42,40 @@ fmt-mobile-check:
 lint-mobile:
     cd apps/mobile && bunx expo lint
 
+# ─── Full health check ───────────────────────────────────────
+# `just verify` = test + check + live API smoke test end-to-end.
+verify: test check smoke
+
+smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PORT=${MYAPP_PORT:-8090}
+    echo "==> smoke: using port $PORT"
+    lsof -i :$PORT -t | xargs kill 2>/dev/null || true
+    cd apps/api
+    uv run uvicorn myapp.entrypoints.api:app --host 127.0.0.1 --port $PORT &
+    PID=$!
+    trap 'kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true' EXIT
+    sleep 1.5
+    BASE="http://127.0.0.1:$PORT"
+    echo "==> GET /health"
+    curl -fsS "$BASE/health" | grep -q '"status":"ok"'
+    echo "==> POST /items"
+    curl -fsS -X POST "$BASE/items" \
+        -H 'content-type: application/json' \
+        -d '{"id":"smoke","name":"smoke","description":"","tags":["t1"]}' \
+        -o /dev/null -w '%{http_code}\n' | grep -q '^201$'
+    echo "==> GET /items"
+    curl -fsS "$BASE/items" | grep -q '"id":"smoke"'
+    echo "==> GET /items/smoke"
+    curl -fsS "$BASE/items/smoke" | grep -q '"id":"smoke"'
+    echo "==> GET /items?tag=t1"
+    curl -fsS "$BASE/items?tag=t1" | grep -q '"id":"smoke"'
+    echo "smoke test passed"
+
 # ─── Backend app shortcuts ────────────────────────────────────
 api:
-    cd apps/api && uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port 8090
+    cd apps/api && uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port ${MYAPP_PORT:-8090}
 api-setup:
     cd apps/api && uv sync --all-extras
 

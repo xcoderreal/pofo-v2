@@ -15,6 +15,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "expo": "~54",
+    "expo-constants": "~18.0.13",
     "expo-router": "~6.0.23",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",

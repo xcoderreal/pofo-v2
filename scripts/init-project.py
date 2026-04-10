@@ -36,8 +36,9 @@ from pathlib import Path
 FILES = [
     "package.json",
     "justfile",
-    ".env.sample",
     "api/index.py",
+    "apps/api/.env.sample",
+    "apps/mobile/.env.sample",
     "apps/api/pyproject.toml",
     "apps/api/package.json",
     "apps/api/src/myapp/__init__.py",
@@ -135,9 +136,12 @@ def main() -> int:
     print("Next steps:")
     print("  1. Review the diff:        git diff")
     print("  2. Edit README.md and docs/ by hand (content, not mechanical)")
-    print("  3. Detach from skeleton:   rm -rf .git && git init && git add -A && git commit -m 'init'")
-    print("  4. Reinstall dependencies: just install")
-    print("  5. Verify everything:      just test && just check")
+    print("  3. (Optional) Create env files for advanced config:")
+    print("       cp apps/api/.env.sample    apps/api/.env.local")
+    print("       cp apps/mobile/.env.sample apps/mobile/.env.local")
+    print("  4. Detach from skeleton:   rm -rf .git && git init && git add -A && git commit -m 'init'")
+    print("  5. Reinstall dependencies: just install")
+    print("  6. Verify everything:      just test && just check")
     return 0
 
 

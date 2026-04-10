@@ -1,26 +1,6 @@
-import { Platform } from "react-native";
+import { resolveApiBaseUrl } from "./env";
 
-declare const process: { env: Record<string, string | undefined> };
-
-const getBaseUrl = () => {
-  if (Platform.OS === "android") return "http://10.0.2.2:8090";
-  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    const { hostname, protocol } = window.location;
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://localhost:8090";
-    }
-    // LAN dev: same host, API on port 8090
-    if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)) {
-      return `${protocol}//${hostname}:8090`;
-    }
-    // Production (Vercel): same-origin, API at /api
-    return "/api";
-  }
-  return "http://localhost:8090";
-};
-
-const BASE_URL = getBaseUrl();
+const BASE_URL = resolveApiBaseUrl();
 
 export interface Item {
   id: string;

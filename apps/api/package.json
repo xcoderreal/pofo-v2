@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port 8090",
-    "dev:web": "uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port 8090",
-    "dev:ios": "uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port 8090",
+    "dev": "uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port ${MYAPP_PORT:-8090}",
+    "dev:web": "uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port ${MYAPP_PORT:-8090}",
+    "dev:ios": "uv run uvicorn myapp.entrypoints.api:app --reload --host 0.0.0.0 --port ${MYAPP_PORT:-8090}",
     "test": "uv run pytest",
     "lint": "uv run ruff check src/ tests/"
   }
