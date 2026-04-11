@@ -32,7 +32,7 @@ The backend follows the architecture from "Architecture Patterns with Python" (P
 
 4. **Entrypoints are thin.** `entrypoints/api.py` does three things: defines request/response schemas (Pydantic), wires dependencies via `Depends()`, and delegates to the service layer. No business logic here.
 
-5. **Testing without mocks.** Tests use `FakeRepository` (an in-memory implementation of the abstract repository). No `unittest.mock`, no `@patch` — just a real object that implements the same interface. This catches bugs that mocks hide.
+5. **Testing without mocks.** Tests use `FakeRepository` (an in-memory implementation of the abstract repository). No `unittest.mock`, no `@patch` — just a real object that implements the same interface. This catches bugs that mocks hide. See [`docs/testing.md`](testing.md) for the four-tier test pyramid (unit → integration → smoke → e2e).
 
 ### Layer rules
 
@@ -125,7 +125,9 @@ Three workflows, each scoped to its app's file paths:
 | Workflow | Trigger | Jobs |
 |----------|---------|------|
 | `frontend.yml` | `apps/mobile/**` | lint, typecheck, build-web |
-| `backend.yml` | `apps/api/**` | lint (ruff), test (pytest) |
+| `backend.yml` | `apps/api/**` | lint (ruff), test-unit, test-integration, test-smoke |
+| `e2e.yml` | push to main + nightly cron | test-e2e-local |
+| `heartbeat.yml` | manual / cron (disabled by default) | smoke against prod URL |
 | `deploy-backend.yml` | push to main + `apps/api/**` | Vercel deploy |
 
 ## Package Managers
