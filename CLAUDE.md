@@ -45,7 +45,8 @@ Mimic the existing `Item` / `ItemRepository` / `ItemService` / routes as your te
 
 ## Testing philosophy
 
-- **Four-tier pyramid.** `tests/unit/` (domain + service via `FakeRepository`), `tests/integration/` (ASGI in-process via `TestClient`), `tests/smoke/` (real HTTP, critical path), `tests/e2e/` (real HTTP, comprehensive). See [`docs/testing.md`](docs/testing.md) for the full decision tree.
+- **Five-tier pyramid.** `apps/api/tests/unit/` (domain + service via `FakeRepository`), `apps/api/tests/integration/` (ASGI in-process via `TestClient`), `apps/api/tests/smoke/` (real HTTP, critical path), `apps/api/tests/e2e/` (real HTTP, comprehensive), `apps/mobile/tests/web/` (real browser via Playwright — catches runtime UI errors invisible to tsc). See [`docs/testing.md`](docs/testing.md) for the full decision tree and capabilities.
+- **Frontend unit tests.** `apps/mobile/tests/unit/lib/*.test.ts` covers pure-function logic in `lib/` via `bun test`. The same mirror convention as backend unit tests.
 - **Use `FakeRepository`, not mocks.** No `unittest.mock`, no `@patch`. Fake adapters implement the same ABC as real ones and behave like a real store. This catches bugs mocks hide (interface drift, ordering assumptions, etc.).
 - **Integration tests use fixtures, not module-level overrides.** See `tests/integration/test_api.py` — the `client` fixture installs a fresh `FakeItemRepository` for each test so state doesn't leak across tests but *does* persist across requests within a test.
 - **Every new endpoint gets a round-trip test.** POST → GET → see it. This is what `dependency_overrides` + fixtures enable.
@@ -54,16 +55,20 @@ Mimic the existing `Item` / `ItemRepository` / `ItemService` / routes as your te
 
 | Test asks… | Tier |
 |---|---|
-| "Is this pure Python logic right?" (no HTTP, no FastAPI) | `tests/unit/` |
-| "Is the FastAPI wiring correct?" (validation, deps, routing) | `tests/integration/` |
-| "Is the deployed app severely broken?" (health + 1 round-trip) | `tests/smoke/` |
-| "Is this endpoint/filter/error-path correct over real HTTP?" | `tests/e2e/` |
+| "Is this pure Python logic right?" (no HTTP, no FastAPI) | `apps/api/tests/unit/` |
+| "Is this pure TypeScript logic right?" (no React, no globals) | `apps/mobile/tests/unit/` |
+| "Is the FastAPI wiring correct?" (validation, deps, routing) | `apps/api/tests/integration/` |
+| "Is the deployed app severely broken?" (health + 1 round-trip) | `apps/api/tests/smoke/` |
+| "Is this endpoint/filter/error-path correct over real HTTP?" | `apps/api/tests/e2e/` |
+| "Does the browser bundle render without runtime errors?" | `apps/mobile/tests/web/` |
 
-When in doubt, prefer the lower tier. Smoke tests should be cronnable against prod without blinking — keep them tight.
+When in doubt, prefer the lower tier. Smoke tests should be cronnable against prod without blinking — keep them tight. The web tier is the only place to catch runtime UI bugs that pass `tsc` and bundle build.
 
 ### Test file locations
 
-**Unit tier (`tests/unit/`) — strict mirror of the source tree:**
+**Unit tiers — strict mirror of the source tree:**
+
+Backend (`apps/api/tests/unit/`):
 
 | Source | Test |
 |---|---|
@@ -71,11 +76,20 @@ When in doubt, prefer the lower tier. Smoke tests should be cronnable against pr
 | `src/myapp/service/item_service.py` | `tests/unit/service/test_item_service.py` |
 | `src/myapp/adapters/memory_repository.py` | `tests/unit/adapters/test_memory_repository.py` |
 
-Rationale: unit tests target one module's pure logic. Mirroring makes "where does the test for X live?" trivially answerable as the codebase grows.
+Frontend (`apps/mobile/tests/unit/`):
 
-**Integration / smoke / e2e tiers — flexible:**
+| Source | Test |
+|---|---|
+| `apps/mobile/lib/env-core.ts` | `apps/mobile/tests/unit/lib/env.test.ts` |
+| `apps/mobile/lib/foo.ts` (future) | `apps/mobile/tests/unit/lib/foo.test.ts` |
 
-These tiers are cross-cutting by nature — a single test often exercises the router + service + adapter + real HTTP serialization. Organize tests by feature, flow, or scenario, whichever reads most naturally. Flat directories are fine until a tier has 5+ files; then group into subdirectories (`tests/e2e/items/`, `tests/e2e/auth/`).
+Rationale: unit tests target one module's pure logic. Mirroring makes "where does the test for X live?" trivially answerable as the codebase grows. Same convention applies to both backend (pytest) and frontend (bun test).
+
+For frontend, **separate the pure logic from framework-coupled code** (`lib/env-core.ts` vs `lib/env.ts`) so unit tests don't have to mock `react-native`. The pure file is what `bun test` imports; the adapter file imports framework globals and re-exports the pure API.
+
+**Integration / smoke / e2e / web tiers — flexible:**
+
+These tiers are cross-cutting by nature — a single test often exercises router + service + adapter + real HTTP serialization, or in the web tier's case, the entire bundle running in a browser. Organize tests by feature, flow, or scenario, whichever reads most naturally. Flat directories are fine until a tier has 5+ files; then group into subdirectories (`tests/e2e/items/`, `tests/web/items/`).
 
 **Exceptions:**
 - Trivial modules (`__init__.py`, pure type/config declarations) don't need test files
@@ -115,18 +129,27 @@ See [`docs/bootstrap.md`](docs/bootstrap.md) for the full symptom → fix table.
 ## Commands (auto-allowed in `.claude/settings.json`)
 
 ```bash
-just test              # pytest + tsc --noEmit across both apps
-just check             # lint + format-check (read-only, matches CI)
-just fmt               # apply ruff format + expo lint --fix
-just lint              # lint only
-just verify            # fast gate: unit + integration + smoke-local + check
-just test-api          # backend only (all tiers)
-just test-unit         # unit tier only (fastest inner loop)
-just test-integration  # integration tier only
-just test-smoke-local  # smoke tier, spawns uvicorn
-just test-e2e-local    # e2e tier, spawns uvicorn
-just test-mobile       # frontend typecheck only
+just test                  # pytest + tsc + bun test across both apps
+just check                 # lint + format-check (read-only, matches CI)
+just fmt                   # apply ruff format + expo lint --fix
+just lint                  # lint only
+just verify                # the gate: unit + integration + smoke-local + mobile-unit + web-local + check
+
+# Backend tiers
+just test-api              # backend only (all tiers)
+just test-unit             # backend unit tier (fastest inner loop)
+just test-integration      # backend integration tier
+just test-smoke-local      # backend smoke tier, spawns uvicorn
+just test-e2e-local        # backend e2e tier, spawns uvicorn
+
+# Frontend tiers
+just test-mobile           # frontend: typecheck + unit
+just test-mobile-typecheck # tsc --noEmit only
+just test-mobile-unit      # bun test on tests/unit/
+just test-web-local        # web tier: Playwright loads bundle in headless Chromium
 ```
+
+`just verify` is the canonical "is everything green" command. It runs the full pre-commit gate including the web tier (~20s cold). For the runtime UI capabilities Playwright unlocks (UI mode, trace viewer, debugging), see [`docs/testing.md`](docs/testing.md) § "Web tier — capabilities and how to extend".
 
 For dev servers (interactive, not auto-allowed): `just dev` (web), `just dev-ios`, `just api`.
 
@@ -144,13 +167,13 @@ For dev servers (interactive, not auto-allowed): `just dev` (web), `just dev-ios
 just new-project my_app   # renames 'myapp' → 'my_app' everywhere
 ```
 
-See `scripts/init-project.py` for what exactly gets renamed. Then edit `README.md` and `docs/` by hand, detach from skeleton history (`rm -rf .git && git init`), and verify with `just test && just check`.
+See `scripts/init-project.py` for what exactly gets renamed. Then edit `README.md` and `docs/` by hand, detach from skeleton history (`rm -rf .git && git init`), and verify with `just verify`.
 
 ## Doc pointers
 
 - [`docs/philosophy.md`](docs/philosophy.md) — what this skeleton is, what's baseline vs opt-in, MCP vs test tier
 - [`docs/architecture.md`](docs/architecture.md) — design decisions & layer rationale
-- [`docs/testing.md`](docs/testing.md) — four-tier test pyramid (unit → integration → smoke → e2e)
+- [`docs/testing.md`](docs/testing.md) — five-tier test pyramid (unit → integration → smoke → e2e → web) + Playwright capabilities
 - [`docs/bootstrap.md`](docs/bootstrap.md) — install + worktree troubleshooting
 - [`docs/vercel.md`](docs/vercel.md) — deploy flow, env vars, gotchas
 - [`docs/pinned-versions.md`](docs/pinned-versions.md) — Expo SDK 54 version pins (critical)

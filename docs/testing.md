@@ -63,17 +63,20 @@ just test-smoke-local             # ~1.5s (spawns server on random free port)
 just test-e2e-local               # ~2s
 
 # Real-browser tier — exports bundle, serves, runs Chromium
-just test-web-local               # ~20s cold (one-time Chromium startup)
+just test-web-local               # ~15-25s cold (Chromium startup + bundle export)
+
+# Frontend unit tier — pure-function logic in apps/mobile/lib/, via bun test
+just test-mobile-unit             # ~80ms
 
 # Against an externally-managed URL (your own `just api`, staging, prod)
 just test-smoke url=http://127.0.0.1:8090
 just test-e2e url=https://staging.example.com
 
 # Everything (full CI equivalent)
-just test                         # unit + integration + e2e + mobile typecheck
+just test                         # unit + integration + e2e + mobile typecheck + mobile-unit
 
-# Fast pre-commit gate
-just verify                       # unit + integration + smoke-local + check
+# Fast pre-commit gate (default `just`)
+just verify                       # unit + integration + smoke-local + mobile-unit + web-local + check
 ```
 
 ## The base_url fixture
@@ -98,6 +101,84 @@ fixture, which defaults to:
 Override with `SKELETON_E2E_ALLOW_WRITES=1`. This is the safety valve
 that lets you run `just test-smoke url=https://prod.example.com` as a
 cron heartbeat without POSTing junk into your prod database.
+
+## Web tier — capabilities and how to extend
+
+The web tier (`apps/mobile/tests/web/`) uses [Playwright](https://playwright.dev) to load the exported Expo web bundle in headless Chromium and assert that nothing crashes during render. It's the only tier in the pyramid that catches **runtime UI errors** — bugs that pass `tsc --noEmit` and `expo export` but blow up the moment a real browser tries to render the page (CSS shim issues, hydration failures, missing globals, etc.).
+
+### Running
+
+| Command | What it does |
+|---|---|
+| `just test-web-local` | Builds the bundle, spawns the backend (`uvicorn`) + static frontend (`bunx serve dist`), runs all tests in `tests/web/` headless. ~15-25s cold. |
+| `cd apps/mobile && bunx playwright test` | Same as above (the recipe is a thin wrapper). |
+| `cd apps/mobile && bunx playwright test --ui` | Interactive UI mode — see each test step, time-travel through actions, inspect DOM at each frame. The best debugging tool. |
+| `cd apps/mobile && bunx playwright test --headed` | Run with a visible browser window. Slower than headless but useful when you want to watch the actual page. |
+| `cd apps/mobile && bunx playwright test --grep "smoke"` | Run only tests whose name matches the pattern. |
+| `cd apps/mobile && bunx playwright test --trace on` | Capture a Playwright trace for every test. Open with `bunx playwright show-trace test-results/.../trace.zip`. Best post-mortem for CI failures. |
+| `cd apps/mobile && bunx playwright show-report` | Open the HTML report from the last run. |
+
+### What the test environment looks like
+
+Playwright's `webServer` config (`apps/mobile/playwright.config.ts`) spawns **two** servers and waits for both to be reachable before any test runs:
+
+1. **Backend** — `cd ../api && uv run uvicorn myapp.entrypoints.api:app --port 8090`. Waits for `/health`. Required because the Expo bundle's `useEffect` calls `/items` on mount; without a backend the test would catch a `ERR_CONNECTION_REFUSED` and fail.
+2. **Frontend** — `npx expo export --platform web && bunx serve dist -l 4321 -s`. Waits for the index page on `:4321`. Uses `npx` (not `bunx`) because Metro doesn't exit cleanly under bun.
+
+`reuseExistingServer: !CI` lets local re-runs reuse a server you already have running (e.g. a `just api` in another terminal). In CI it always starts fresh.
+
+### Available capabilities inside a test
+
+- **`page.on("pageerror", handler)`** — captures uncaught JavaScript exceptions during render. Used by `smoke.spec.ts` as the primary assertion.
+- **`page.on("console", handler)`** — captures console output. Filtering by `msg.type() === "error"` catches `console.error()` calls including React warnings about uncaught promise rejections.
+- **`page.screenshot({ path: "..." })`** — write a PNG of the current viewport. Useful for visual regression in extended tests.
+- **`page.locator("text=Loading...").waitFor({ state: "hidden" })`** — wait for specific UI states to settle.
+- **`expect(page).toHaveTitle(/.../)`** — assert page title matches a regex.
+- **`page.evaluate(() => { ... })`** — run arbitrary JavaScript in the page context. Use sparingly; usually a sign you should be testing something else.
+- **`page.waitForLoadState("networkidle")`** — wait until network has been idle for 500ms. Used in the smoke test to ensure async hydration has settled before assertions.
+- **`page.waitForRequest(/\/api\//)`** — wait for a specific HTTP call to fire. Useful when you want to test that a button triggers an API call.
+- **Full Playwright API** — `click`, `fill`, `selectOption`, `keyboard.press`, `dragTo`, etc. See https://playwright.dev/docs/api/class-page
+
+### Adding a new web test
+
+Create a sibling file in `apps/mobile/tests/web/`:
+
+```typescript
+// apps/mobile/tests/web/items-flow.spec.ts
+import { expect, test } from "@playwright/test";
+
+test("user can add an item and see it in the list", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("text=No items").waitFor();
+
+  await page.locator("input[placeholder*='name']").fill("hello");
+  await page.locator("button:has-text('Add')").click();
+
+  await expect(page.locator("text=hello")).toBeVisible();
+});
+```
+
+Keep web tests **focused on what only a real browser can verify**: rendering, runtime errors, CSS layout, real navigation, real user interaction. Logic that lives in `lib/*.ts` should be tested by `bun test` in `tests/unit/` instead — those run in 80ms vs 10+ seconds for Playwright.
+
+### Limitations
+
+- **Chromium only.** Firefox and WebKit aren't installed by default. Add them with `bunx playwright install firefox webkit` and uncomment the projects in `playwright.config.ts` if you need cross-browser coverage.
+- **Headless by default.** UI mode (`--ui`) is the recommended interactive workflow.
+- **No visual regression baseline.** Add `playwright-visual-regression-tracker` or use `expect(screenshot).toMatchSnapshot()` if you need it.
+- **Cold start is ~15s** because of the bundle export + Chromium boot. The actual page-load + assertions are <2s. Most of the cost is one-time per `just verify` run, not per test.
+
+### CI integration
+
+The `test-web-local` job in `.github/workflows/e2e.yml` runs the same suite on push to `main` and nightly. It sets up both Python (uv) and Node (bun), installs Chromium with `bunx playwright install chromium --with-deps`, then runs `bunx playwright test`. ~30-60s in CI cold including Chromium download (cached on subsequent runs).
+
+### Relationship to Playwright MCP
+
+The web tier and Playwright MCP solve **different problems** and can coexist. See [`philosophy.md` § MCP vs test tier](philosophy.md#mcp-vs-test-tier-worked-example) for the full breakdown:
+
+- **Test tier** (this section) — deterministic, CI-compatible, regression gate. Baked into `just verify`. The floor for runtime UI validation.
+- **Playwright MCP** (opt-in) — agent-callable browser tools for in-session interactive debugging. Run `just enable-mcp-playwright` to whitelist. Doesn't replace the test tier.
+
+When the web tier fails in CI, MCP is what the agent uses next session to investigate the live DOM and propose a fix. They're layered, not competing.
 
 ## Adding a smoke test
 
@@ -153,7 +234,4 @@ cd apps/api && SKELETON_E2E_URL=https://your-prod-url uv run pytest tests/smoke/
 
 ## What's deliberately NOT in this setup
 
-See `docs/test-pyramid-plan.md` for the full list and rationale. Short
-version: no factory libraries, no frozen time, no VCR, no hypothesis, no
-mutation testing, no contract tests. Add them when the skeleton has a
-concrete need — not before.
+No factory libraries, no frozen time, no VCR, no hypothesis, no mutation testing, no contract tests, no visual regression baselines. See [`philosophy.md`](philosophy.md) for the baseline-vs-extension framing — the short version is "add when the skeleton has a concrete need, not before."
