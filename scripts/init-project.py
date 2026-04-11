@@ -76,8 +76,16 @@ TEXT_EXTENSIONS = {".py", ".ts", ".tsx", ".json", ".toml", ".yml", ".yaml"}
 NEVER_SCAN = {
     "CLAUDE.md",
     "README.md",
+    "MAINTAINING.md",
     "scripts/init-project.py",
 }
+
+# Maintainer-only files that should be REMOVED (not rewritten) during a fork.
+# These describe how the original skeleton is maintained and have no place
+# in a user's forked project.
+MAINTAINER_ONLY_PATHS = [
+    "MAINTAINING.md",
+]
 
 # Substring filters — any path containing one of these is skipped.
 NEVER_SCAN_SUBSTRINGS = ("__pycache__", ".venv", "node_modules", ".git/")
@@ -182,6 +190,18 @@ def main() -> int:
                 path.write_text(text)
                 print(f"  updated: {rel}")
             changed += 1
+
+    # Remove maintainer-only files that don't belong in a fork.
+    for rel in MAINTAINER_ONLY_PATHS:
+        path = repo / rel
+        if not path.exists():
+            continue
+        if args.dry_run:
+            print(f"  would remove: {rel}")
+        else:
+            path.unlink()
+            print(f"  removed:  {rel}")
+        changed += 1
 
     # Rename the Python package directory last, after all text edits land.
     old_pkg = repo / "apps" / "api" / "src" / "myapp"

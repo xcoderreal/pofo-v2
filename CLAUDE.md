@@ -147,6 +147,5 @@ See `scripts/init-project.py` for what exactly gets renamed. Then edit `README.m
 - [`docs/architecture.md`](docs/architecture.md) — design decisions & layer rationale
 - [`docs/testing.md`](docs/testing.md) — four-tier test pyramid (unit → integration → smoke → e2e)
 - [`docs/bootstrap.md`](docs/bootstrap.md) — install + worktree troubleshooting
-- [`docs/feedback_loop.md`](docs/feedback_loop.md) — how this skeleton gets hardened over time (dogfood experiments)
 - [`docs/vercel.md`](docs/vercel.md) — deploy flow, env vars, gotchas
 - [`docs/pinned-versions.md`](docs/pinned-versions.md) — Expo SDK 54 version pins (critical)

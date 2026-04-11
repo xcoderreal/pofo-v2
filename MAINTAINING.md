@@ -1,6 +1,8 @@
-# Skeleton feedback loop
+# Maintaining turbo-skeleton
 
-How this skeleton gets hardened over time: dogfood-driven validation via increasingly complex experiment projects.
+**Audience:** maintainers of this skeleton, not users who forked it to build an app. Users of a forked skeleton don't need this file — it describes the dogfood-validation process the maintainer runs to harden the skeleton over time.
+
+How this skeleton gets hardened: dogfood-driven validation via increasingly complex experiment projects.
 
 ## Why this loop exists
 
@@ -256,7 +258,7 @@ This is the template. v3 (home inventory) was the first experiment to use it ful
 
 ## Related
 
-- [`architecture.md`](architecture.md) — the layering design this skeleton enforces
-- [`testing.md`](testing.md) — the four-tier test pyramid experiments exercise
-- [`bootstrap.md`](bootstrap.md) — install + worktree troubleshooting (common step-3 blocker for first-time forks)
-- [`CLAUDE.md`](../CLAUDE.md) — the agent contract that experiments validate
+- [`docs/architecture.md`](docs/architecture.md) — the layering design this skeleton enforces
+- [`docs/testing.md`](docs/testing.md) — the four-tier test pyramid experiments exercise
+- [`docs/bootstrap.md`](docs/bootstrap.md) — install + worktree troubleshooting (common step-3 blocker for first-time forks)
+- [`CLAUDE.md`](CLAUDE.md) — the agent contract that experiments validate
