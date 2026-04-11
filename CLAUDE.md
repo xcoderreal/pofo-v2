@@ -32,7 +32,7 @@ To add a new resource (say, `User`), create files in this exact order:
 3. **`adapters/memory_repository.py`** — add `MemoryUserRepository` implementing it
 4. **`service/user_service.py`** — business logic, depends on `UserRepository` interface
 5. **`tests/fake_repository.py`** — add `FakeUserRepository`
-6. **`tests/unit/test_user_service.py`** — unit tests against `FakeUserRepository`
+6. **`tests/unit/service/test_user_service.py`** — unit tests against `FakeUserRepository` (mirror path)
 7. **`entrypoints/api.py`** — Pydantic request/response, `get_repo`/`get_service` dependencies, route handlers
 8. **`tests/integration/test_user_api.py`** — integration tests via `TestClient` + `dependency_overrides`
 9. **`tests/e2e/test_users.py`** — real-HTTP coverage for the new endpoints (see `docs/testing.md`)
@@ -56,6 +56,27 @@ Mimic the existing `Item` / `ItemRepository` / `ItemService` / routes as your te
 | "Is this endpoint/filter/error-path correct over real HTTP?" | `tests/e2e/` |
 
 When in doubt, prefer the lower tier. Smoke tests should be cronnable against prod without blinking — keep them tight.
+
+### Test file locations
+
+**Unit tier (`tests/unit/`) — strict mirror of the source tree:**
+
+| Source | Test |
+|---|---|
+| `src/myapp/domain/model.py` | `tests/unit/domain/test_model.py` |
+| `src/myapp/service/item_service.py` | `tests/unit/service/test_item_service.py` |
+| `src/myapp/adapters/memory_repository.py` | `tests/unit/adapters/test_memory_repository.py` |
+
+Rationale: unit tests target one module's pure logic. Mirroring makes "where does the test for X live?" trivially answerable as the codebase grows.
+
+**Integration / smoke / e2e tiers — flexible:**
+
+These tiers are cross-cutting by nature — a single test often exercises the router + service + adapter + real HTTP serialization. Organize tests by feature, flow, or scenario, whichever reads most naturally. Flat directories are fine until a tier has 5+ files; then group into subdirectories (`tests/e2e/items/`, `tests/e2e/auth/`).
+
+**Exceptions:**
+- Trivial modules (`__init__.py`, pure type/config declarations) don't need test files
+- `tests/fake_repository.py` and other shared helpers live at `tests/` root — they're fixtures, not tests
+- A single source module may split across multiple test files once tests exceed ~300 lines; the primary test file keeps the mirrored path, siblings are named descriptively (`test_item_service_edge_cases.py`)
 
 ## Frontend — stale Metro bundles are a common trap
 
