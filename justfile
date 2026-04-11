@@ -35,8 +35,13 @@ test-e2e-local:
 # Writes are disabled unless url is localhost or SKELETON_E2E_ALLOW_WRITES=1.
 test-e2e url:
     cd apps/api && SKELETON_E2E_URL={{url}} uv run pytest tests/e2e/ -v
-test-mobile:
+test-mobile: test-mobile-typecheck test-mobile-unit
+# Frontend typecheck (tsc --noEmit)
+test-mobile-typecheck:
     cd apps/mobile && bunx tsc --noEmit
+# Frontend unit tests (bun test, pure-function coverage of lib/)
+test-mobile-unit:
+    cd apps/mobile && bun test tests/unit/
 # `test-web-local` = the web tier of the test pyramid. Exports the Expo
 # web bundle, serves it statically, loads it in headless Chromium, and
 # asserts the page renders without runtime errors. Catches CSS/runtime
@@ -73,7 +78,7 @@ lint-mobile:
 # Does NOT run backend e2e (use `just test-e2e-local` for that) or mobile
 # typecheck (use `just test` for the full CI-equivalent run).
 # ~35-45s cold because of Playwright's browser startup + bundle export.
-verify: test-unit test-integration test-smoke-local test-web-local check
+verify: test-unit test-integration test-smoke-local test-mobile-unit test-web-local check
 
 # ─── Build artifacts ─────────────────────────────────────────
 # `just build-web` = produce the static web bundle (matches Vercel's build).

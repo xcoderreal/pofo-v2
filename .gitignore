@@ -9,6 +9,10 @@ dist/
 *.pyc
 __pycache__/
 
+# Playwright test artifacts
+apps/mobile/test-results/
+apps/mobile/playwright-report/
+
 # Env
 .env
 .env.local
