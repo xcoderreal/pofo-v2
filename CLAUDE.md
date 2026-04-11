@@ -148,6 +148,7 @@ See `scripts/init-project.py` for what exactly gets renamed. Then edit `README.m
 
 ## Doc pointers
 
+- [`docs/philosophy.md`](docs/philosophy.md) — what this skeleton is, what's baseline vs opt-in, MCP vs test tier
 - [`docs/architecture.md`](docs/architecture.md) — design decisions & layer rationale
 - [`docs/testing.md`](docs/testing.md) — four-tier test pyramid (unit → integration → smoke → e2e)
 - [`docs/bootstrap.md`](docs/bootstrap.md) — install + worktree troubleshooting
