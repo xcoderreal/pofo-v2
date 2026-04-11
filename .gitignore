@@ -25,12 +25,6 @@ apps/*/.env.local
 # Turbo
 .turbo/
 
-# UV
-uv.lock
-
-# Bun
-bun.lock
-
 # Vercel (pip install -t api/)
 api/*.dist-info/
 api/*.egg-info/
