@@ -1,6 +1,6 @@
 # Testing
 
-The skeleton uses a four-tier test pyramid. Each tier answers a different
+The skeleton uses a **five-tier** test pyramid. Each tier answers a different
 question and runs independently, so you can opt into the right level of
 rigor for the change you're making.
 
@@ -11,27 +11,40 @@ rigor for the change you're making.
 | **Unit** | `apps/api/tests/unit/` | "Is the domain/service logic right?" | None (FakeItemRepository) | <100ms/test | Every save, every PR |
 | **Integration** | `apps/api/tests/integration/` | "Is the full app wired correctly?" | ASGI in-process (`TestClient`) | <500ms/test | Every save, every PR |
 | **Smoke** | `apps/api/tests/smoke/` | "Is the deploy severely broken?" | Real HTTP | <5s total | Every deploy, prod heartbeat |
-| **E2E** | `apps/api/tests/e2e/` | "Is any feature broken?" | Real HTTP | 10–60s total | Push to main, nightly |
+| **E2E (backend)** | `apps/api/tests/e2e/` | "Is any feature broken?" | Real HTTP | 10–60s total | Push to main, nightly |
+| **Web (runtime UI)** | `apps/mobile/tests/web/` | "Does the browser bundle load without crashing?" | Real browser (Playwright) | ~20s total | Every PR (part of `just verify`) |
 
 **Smoke vs e2e:** smoke is what you'd cron against prod every 5 minutes
 without blinking — one health check, one list, one 404, one round-trip.
 E2E is comprehensive — every endpoint, every filter, every error path.
 Different intent, different schedule.
 
+**Why the web tier exists:** `tsc --noEmit` and `expo export` both pass
+cleanly even when the bundle crashes at runtime — e.g., React Native Web
+style-shim errors that are invisible to the type checker. The web tier
+loads the exported bundle in headless Chromium and asserts no `pageerror`
+or `console.error` during render. It's the floor for runtime UI
+validation. See also [`philosophy.md`](philosophy.md) for the MCP vs test
+tier distinction.
+
 ## Which tier does a new test belong in?
 
 ```
+Is it a frontend runtime assertion (browser render, no crash)?
+├── Yes → apps/mobile/tests/web/ (Playwright)
+└── No ↓
+
 Is it pure Python logic (no HTTP, no FastAPI)?
-├── Yes → unit/
+├── Yes → apps/api/tests/unit/
 └── No ↓
 
 Does it go through FastAPI but not over real sockets?
-├── Yes → integration/ (use TestClient + dependency_overrides)
+├── Yes → apps/api/tests/integration/ (TestClient + dependency_overrides)
 └── No ↓
 
 Is it the "is prod alive" critical path?
-├── Yes → smoke/
-└── No → e2e/
+├── Yes → apps/api/tests/smoke/
+└── No → apps/api/tests/e2e/
 ```
 
 When in doubt, prefer the lower tier. A unit test that catches a bug in
@@ -48,6 +61,9 @@ just test-integration             # ~0.3s
 # Real-HTTP tiers — spawn a uvicorn subprocess
 just test-smoke-local             # ~1.5s (spawns server on random free port)
 just test-e2e-local               # ~2s
+
+# Real-browser tier — exports bundle, serves, runs Chromium
+just test-web-local               # ~20s cold (one-time Chromium startup)
 
 # Against an externally-managed URL (your own `just api`, staging, prod)
 just test-smoke url=http://127.0.0.1:8090

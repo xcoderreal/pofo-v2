@@ -53,7 +53,7 @@ These are deliberately NOT in the baseline:
 
 - **Memory** (default, included) — `MemoryItemRepository`
 - **SQLite / Postgres** (opt-in) — implement the repository ABC in `adapters/sql_repository.py`, swap `get_repo()`. No SQL dep in the skeleton by default.
-- **Supabase** (opt-in) — `SupabaseItemRepository` using `@supabase/supabase-js`. Provides environment switching (local / staging / prod) via env vars. `FakeRepository` stays usable for tests regardless.
+- **Supabase** (opt-in) — `SupabaseItemRepository` using `supabase-py` (the Python client). Provides environment switching (local / staging / prod) via env vars. `FakeRepository` stays usable for tests regardless.
 - **Redis / DynamoDB / anything else** — same pattern: implement the ABC, swap the wiring.
 
 The `ItemRepository` ABC is storage-agnostic by design. Adding real persistence is ONE file change. See [architecture.md § repository abstraction](architecture.md).

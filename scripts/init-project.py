@@ -244,6 +244,10 @@ def main() -> int:
     print()
     print("If you ran this script standalone (not via `just new-project`), also run:")
     print("  just install && just lint-api-fix && just verify")
+    print()
+    print("Optional: if you use @playwright/mcp in your Claude Code env,")
+    print("  just enable-mcp-playwright")
+    print("to whitelist the browser tools for in-session UI validation.")
     return 0
 
 

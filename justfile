@@ -37,6 +37,12 @@ test-e2e url:
     cd apps/api && SKELETON_E2E_URL={{url}} uv run pytest tests/e2e/ -v
 test-mobile:
     cd apps/mobile && bunx tsc --noEmit
+# `test-web-local` = the web tier of the test pyramid. Exports the Expo
+# web bundle, serves it statically, loads it in headless Chromium, and
+# asserts the page renders without runtime errors. Catches CSS/runtime
+# crashes that tsc and bundle-build miss. ~20s cold.
+test-web-local:
+    cd apps/mobile && bunx playwright test
 
 # ─── Formatting & linting (repo-wide + per-app) ───────────────
 # `just check` = read-only (CI); `just fmt` = write (local).
@@ -62,11 +68,12 @@ lint-mobile:
     cd apps/mobile && bunx expo lint
 
 # ─── Full health check ───────────────────────────────────────
-# `just verify` = fast pre-commit / PR gate.
-# Runs unit + integration + smoke-local + check. Does NOT run e2e (use
-# `just test-e2e-local` for that) or mobile typecheck (use `just test` for
-# the full CI-equivalent run).
-verify: test-unit test-integration test-smoke-local check
+# `just verify` = pre-commit / PR gate.
+# Runs unit + integration + smoke-local + web (real browser runtime) + check.
+# Does NOT run backend e2e (use `just test-e2e-local` for that) or mobile
+# typecheck (use `just test` for the full CI-equivalent run).
+# ~35-45s cold because of Playwright's browser startup + bundle export.
+verify: test-unit test-integration test-smoke-local test-web-local check
 
 # ─── Build artifacts ─────────────────────────────────────────
 # `just build-web` = produce the static web bundle (matches Vercel's build).
@@ -101,6 +108,14 @@ kill:
     -lsof -i :${MYAPP_PORT:-8090} -t 2>/dev/null | xargs kill 2>/dev/null
     -lsof -i :8091 -t 2>/dev/null | xargs kill 2>/dev/null
     @echo "killed dev servers (backend ${MYAPP_PORT:-8090}, web 8091)"
+
+# `just enable-mcp-playwright` = whitelist the Playwright MCP server's
+# browser tools in .claude/settings.json. Idempotent — safe to re-run.
+# Requires @playwright/mcp to be installed in your Claude Code environment
+# (separate from this repo's dependencies). See docs/testing.md for context
+# on when MCP is useful vs the test tier.
+enable-mcp-playwright:
+    python3 scripts/enable-playwright-mcp.py
 
 # ─── Scaffolding: fork this skeleton into a new project ──────
 # `just new-project <slug>` = rename placeholder + install + lint-fix + verify.

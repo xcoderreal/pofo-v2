@@ -1,30 +1,29 @@
 name: E2E
 
-# E2E runs the full tests/e2e/ suite against a locally-spawned uvicorn.
-# It's split out from backend.yml so the PR path stays fast:
+# E2E runs the full backend e2e suite and the web runtime tier.
+# Split out from backend.yml so the PR path stays fast:
 #   - backend.yml (lint + unit + integration + smoke) runs on every PR
-#   - e2e.yml runs on push-to-main + nightly cron
+#   - e2e.yml runs on push-to-main + nightly cron + manual
 #
-# To run e2e against a staging/prod URL instead, add a second job that
-# sets SKELETON_E2E_URL in env. Writes are auto-disabled against non-local
-# URLs unless SKELETON_E2E_ALLOW_WRITES=1.
+# To run backend e2e against a staging/prod URL instead, add a second job
+# that sets SKELETON_E2E_URL in env. Writes are auto-disabled against
+# non-local URLs unless SKELETON_E2E_ALLOW_WRITES=1.
 
 on:
   push:
     branches: [main]
-    paths: [apps/api/**]
+    paths: [apps/api/**, apps/mobile/**]
   schedule:
     # Nightly at 07:00 UTC. Adjust as the project matures.
     - cron: "0 7 * * *"
   workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: apps/api
-
 jobs:
   test-e2e-local:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
     # When a non-memory adapter (Postgres, Redis, Supabase) is added,
     # uncomment the services block below and point the app at it via env.
     # services:
@@ -49,3 +48,38 @@ jobs:
       - run: uv sync --all-extras --frozen
 
       - run: uv run pytest tests/e2e/ -v
+
+  test-web-local:
+    # The web tier loads the exported bundle in headless Chromium and
+    # asserts no runtime errors during render. Catches CSS crashes and
+    # hydration bugs that tsc + bundle build miss.
+    #
+    # Needs both Python (for the backend uvicorn subprocess the Expo
+    # bundle fetches from on mount) and Node (for Playwright + the
+    # frontend bundle). Playwright's webServer config spawns both.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - run: uv sync --all-extras --frozen
+        working-directory: apps/api
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+        working-directory: .
+
+      - name: Install Playwright browser
+        run: bunx playwright install chromium --with-deps
+
+      - run: bunx playwright test
