@@ -16,6 +16,10 @@ install:
 test: test-api test-mobile
 test-api:
     cd apps/api && uv run pytest
+test-unit:
+    cd apps/api && uv run pytest tests/unit/
+test-integration:
+    cd apps/api && uv run pytest tests/integration/
 test-mobile:
     cd apps/mobile && bunx tsc --noEmit
 
