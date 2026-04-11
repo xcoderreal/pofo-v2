@@ -2,7 +2,7 @@
 
 Living plan for introducing a four-tier test structure (unit → integration → smoke → e2e) into the skeleton. Written as a reviewable checklist so we can iterate on the shape before any code moves.
 
-**Status:** awaiting review before Phase 1 execution.
+**Status:** all phases complete. Phases 1–5 landed as individual commits on the branch. See [`docs/testing.md`](testing.md) for the resulting developer-facing guide.
 
 ## Goal
 

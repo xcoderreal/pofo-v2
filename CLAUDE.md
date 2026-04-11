@@ -32,17 +32,30 @@ To add a new resource (say, `User`), create files in this exact order:
 3. **`adapters/memory_repository.py`** — add `MemoryUserRepository` implementing it
 4. **`service/user_service.py`** — business logic, depends on `UserRepository` interface
 5. **`tests/fake_repository.py`** — add `FakeUserRepository`
-6. **`tests/test_user_service.py`** — unit tests against `FakeUserRepository`
+6. **`tests/unit/test_user_service.py`** — unit tests against `FakeUserRepository`
 7. **`entrypoints/api.py`** — Pydantic request/response, `get_repo`/`get_service` dependencies, route handlers
-8. **`tests/test_api.py`** — integration tests via `TestClient` + `dependency_overrides`
+8. **`tests/integration/test_user_api.py`** — integration tests via `TestClient` + `dependency_overrides`
+9. **`tests/e2e/test_users.py`** — real-HTTP coverage for the new endpoints (see `docs/testing.md`)
 
 Mimic the existing `Item` / `ItemRepository` / `ItemService` / routes as your template. Keep the dependency injection pattern consistent: `get_repo()` returns the concrete adapter (cached with `@lru_cache` so in-memory state persists); `get_service()` takes `repo` via `Depends()`.
 
 ## Testing philosophy
 
+- **Four-tier pyramid.** `tests/unit/` (domain + service via `FakeRepository`), `tests/integration/` (ASGI in-process via `TestClient`), `tests/smoke/` (real HTTP, critical path), `tests/e2e/` (real HTTP, comprehensive). See [`docs/testing.md`](docs/testing.md) for the full decision tree.
 - **Use `FakeRepository`, not mocks.** No `unittest.mock`, no `@patch`. Fake adapters implement the same ABC as real ones and behave like a real store. This catches bugs mocks hide (interface drift, ordering assumptions, etc.).
-- **Integration tests use fixtures, not module-level overrides.** See `tests/test_api.py` — the `client` fixture installs a fresh `FakeItemRepository` for each test so state doesn't leak across tests but *does* persist across requests within a test.
+- **Integration tests use fixtures, not module-level overrides.** See `tests/integration/test_api.py` — the `client` fixture installs a fresh `FakeItemRepository` for each test so state doesn't leak across tests but *does* persist across requests within a test.
 - **Every new endpoint gets a round-trip test.** POST → GET → see it. This is what `dependency_overrides` + fixtures enable.
+
+### Which tier does a new test belong in?
+
+| Test asks… | Tier |
+|---|---|
+| "Is this pure Python logic right?" (no HTTP, no FastAPI) | `tests/unit/` |
+| "Is the FastAPI wiring correct?" (validation, deps, routing) | `tests/integration/` |
+| "Is the deployed app severely broken?" (health + 1 round-trip) | `tests/smoke/` |
+| "Is this endpoint/filter/error-path correct over real HTTP?" | `tests/e2e/` |
+
+When in doubt, prefer the lower tier. Smoke tests should be cronnable against prod without blinking — keep them tight.
 
 ## Frontend — stale Metro bundles are a common trap
 
@@ -67,12 +80,17 @@ Only dig into the source if a fresh bundle still shows the wrong content.
 ## Commands (auto-allowed in `.claude/settings.json`)
 
 ```bash
-just test          # pytest + tsc --noEmit across both apps
-just check         # lint + format-check (read-only, matches CI)
-just fmt           # apply ruff format + expo lint --fix
-just lint          # lint only
-just test-api      # backend only (faster iteration)
-just test-mobile   # frontend typecheck only
+just test              # pytest + tsc --noEmit across both apps
+just check             # lint + format-check (read-only, matches CI)
+just fmt               # apply ruff format + expo lint --fix
+just lint              # lint only
+just verify            # fast gate: unit + integration + smoke-local + check
+just test-api          # backend only (all tiers)
+just test-unit         # unit tier only (fastest inner loop)
+just test-integration  # integration tier only
+just test-smoke-local  # smoke tier, spawns uvicorn
+just test-e2e-local    # e2e tier, spawns uvicorn
+just test-mobile       # frontend typecheck only
 ```
 
 For dev servers (interactive, not auto-allowed): `just dev` (web), `just dev-ios`, `just api`.
@@ -96,5 +114,6 @@ See `scripts/init-project.py` for what exactly gets renamed. Then edit `README.m
 ## Doc pointers
 
 - [`docs/architecture.md`](docs/architecture.md) — design decisions & layer rationale
+- [`docs/testing.md`](docs/testing.md) — four-tier test pyramid (unit → integration → smoke → e2e)
 - [`docs/vercel.md`](docs/vercel.md) — deploy flow, env vars, gotchas
 - [`docs/pinned-versions.md`](docs/pinned-versions.md) — Expo SDK 54 version pins (critical)

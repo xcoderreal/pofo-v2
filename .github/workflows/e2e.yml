@@ -1,0 +1,51 @@
+name: E2E
+
+# E2E runs the full tests/e2e/ suite against a locally-spawned uvicorn.
+# It's split out from backend.yml so the PR path stays fast:
+#   - backend.yml (lint + unit + integration + smoke) runs on every PR
+#   - e2e.yml runs on push-to-main + nightly cron
+#
+# To run e2e against a staging/prod URL instead, add a second job that
+# sets SKELETON_E2E_URL in env. Writes are auto-disabled against non-local
+# URLs unless SKELETON_E2E_ALLOW_WRITES=1.
+
+on:
+  push:
+    branches: [main]
+    paths: [apps/api/**]
+  schedule:
+    # Nightly at 07:00 UTC. Adjust as the project matures.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: apps/api
+
+jobs:
+  test-e2e-local:
+    runs-on: ubuntu-latest
+    # When a non-memory adapter (Postgres, Redis, Supabase) is added,
+    # uncomment the services block below and point the app at it via env.
+    # services:
+    #   postgres:
+    #     image: postgres:16
+    #     env:
+    #       POSTGRES_PASSWORD: postgres
+    #     ports: ["5432:5432"]
+    #     options: >-
+    #       --health-cmd pg_isready
+    #       --health-interval 10s
+    #       --health-timeout 5s
+    #       --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - run: uv sync --all-extras --frozen
+
+      - run: uv run pytest tests/e2e/ -v

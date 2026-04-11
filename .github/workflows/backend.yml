@@ -28,7 +28,7 @@ jobs:
 
       - run: uv run ruff format --check src/ tests/
 
-  test:
+  test-unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,4 +40,34 @@ jobs:
 
       - run: uv sync --all-extras --frozen
 
-      - run: uv run pytest
+      - run: uv run pytest tests/unit/
+
+  test-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - run: uv sync --all-extras --frozen
+
+      - run: uv run pytest tests/integration/
+
+  test-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - run: uv sync --all-extras --frozen
+
+      # tests/smoke/ uses the conftest base_url fixture, which spawns
+      # uvicorn on a random free port. No service matrix needed.
+      - run: uv run pytest tests/smoke/ -v

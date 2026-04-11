@@ -53,6 +53,7 @@ turbo-skeleton/
 ├── api/index.py                  # Vercel serverless entry point
 ├── docs/
 │   ├── architecture.md           # Design decisions & rationale
+│   ├── testing.md                # Four-tier test pyramid
 │   └── pinned-versions.md        # Expo SDK 54 version pins (critical)
 ├── .github/workflows/            # CI (frontend.yml, backend.yml, deploy-backend.yml)
 ├── justfile                      # Command shortcuts
@@ -77,6 +78,15 @@ just test          # pytest + tsc --noEmit
 just check         # lint + format-check (read-only, matches CI)
 just fmt           # apply formatters (ruff format + expo lint --fix)
 just lint          # lint only
+just verify        # fast gate: unit + integration + smoke-local + check
+
+# Tiered backend tests (see docs/testing.md)
+just test-unit             # domain + service against FakeRepository
+just test-integration      # ASGI in-process via TestClient
+just test-smoke-local      # real HTTP, spawns uvicorn
+just test-e2e-local        # real HTTP, comprehensive
+just test-smoke url=...    # smoke against a running URL (localhost/staging/prod)
+just test-e2e url=...      # e2e against a running URL
 
 # Per-app
 just test-api      just test-mobile
@@ -178,8 +188,14 @@ See [`docs/vercel.md`](docs/vercel.md) for the full guide: first-time setup, env
 | Workflow | Trigger | Does |
 |---|---|---|
 | `frontend.yml` | `apps/mobile/**` | lint, typecheck, build-web |
-| `backend.yml` | `apps/api/**` | ruff, pytest |
+| `backend.yml` | `apps/api/**` | ruff, unit, integration, smoke |
+| `e2e.yml` | push to `main` + nightly cron | e2e suite (real HTTP) |
+| `heartbeat.yml` | manual / cron (disabled by default) | smoke against prod URL |
 | `deploy-backend.yml` | push to `main` + `apps/api/**` | `vercel --prod` |
+
+See [`docs/testing.md`](docs/testing.md) for the four-tier test pyramid
+(unit → integration → smoke → e2e) and how to pick the right tier for a
+new test.
 
 ## Gotchas
 
