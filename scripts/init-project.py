@@ -142,7 +142,9 @@ def main() -> int:
     print("       cp apps/mobile/.env.sample apps/mobile/.env.local")
     print("  4. Detach from skeleton:   rm -rf .git && git init && git add -A && git commit -m 'init'")
     print("  5. Reinstall dependencies: just install")
-    print("  6. Verify everything:      just test && just check")
+    print(f"  6. Fix import order:       just lint-api-fix  # renames from 'myapp' to '{slug}'")
+    print(f"                              # may have reordered imports relative to 'tests'")
+    print("  7. Verify everything:      just verify")
     return 0
 
 
