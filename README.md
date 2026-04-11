@@ -193,7 +193,7 @@ See [`docs/vercel.md`](docs/vercel.md) for the full guide: first-time setup, env
 | `heartbeat.yml` | manual / cron (disabled by default) | smoke against prod URL |
 | `deploy-backend.yml` | push to `main` + `apps/api/**` | `vercel --prod` |
 
-See [`docs/testing.md`](docs/testing.md) for the four-tier test pyramid
+See [`docs/testing.md`](docs/testing.md) for the five-tier test pyramid
 (unit → integration → smoke → e2e) and how to pick the right tier for a
 new test.
 

@@ -58,13 +58,8 @@ Run them in **order**: 01 first, because most apps need persistence before auth,
 
 ## Capturing findings
 
-When an experiment completes, the maintainer should write a short findings note in the experiment's file (or as a sibling `.findings.md`) covering:
+When an experiment completes, fill in the **Findings** section at the bottom of the per-experiment file (`01_persistence_adapter.md`, etc.) inline. Don't create a sibling `.findings.md` — the experiment file is the canonical home for both the prompt and its result.
 
-1. What the agent built (commits, file changes summary)
-2. What `just verify` looked like at the end
-3. What broke or got skipped
-4. What the agent's RETRO surfaced as "should be in CLAUDE.md/docs"
-5. Which of those we promote to skeleton baseline vs document as opt-in
-6. Status update for the table above
+The raw-materials checklist (what to capture from the run before writing the findings) lives in [`MAINTAINING.md` § "What to share in step 3"](../../MAINTAINING.md#what-to-share-in-step-3). The per-experiment files have a "What passing looks like" section that lists hard gates, soft signals, and skeleton-improvement signals for that specific experiment — use those to judge what to call out in the Findings section.
 
-This is the same shape as the [step 4 assessment](../../MAINTAINING.md#what-the-assessment-step-4-looks-for) in the feedback loop.
+After filling in Findings, also update this file's status table (above) for that experiment's row.

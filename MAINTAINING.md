@@ -30,42 +30,25 @@ Every experiment that finds a paper cut becomes a skeleton improvement. Every su
 
 Each experiment should be meaningfully harder than the last, OR test a different axis (domain, frontend, deploy, external integration, etc). Don't skip rungs — each generation's findings inform what to build or tighten before the next.
 
-| Generation | App | Axis tested |
-|---|---|---|
-| v1 | TODO list (add, toggle done, delete, filter by tag) | Basic CRUD + four-tier test pyramid + "from natural language" flow |
-| v2 | Same TODO list, re-run after skeleton improvements | Regression check — did improvements hold? |
-| v3 | Home inventory tracker (expiry dates, value, waste/savings math) | Multi-entity, non-trivial service-layer math, state transitions, invariants |
-| v4+ | TBD | Candidates: auth, SQL adapter, file uploads, real external integration, multi-user state |
+**The live ladder lives in [`docs/experiments/INDEX.md`](docs/experiments/INDEX.md)** — that's where the current slate of pending experiments is tracked, with status, links to per-experiment prompt files, and findings as they land. This file describes the *process*; that file holds the *state*.
 
 ## What to share in step 3
 
-### Required (minimum useful signal)
+The minimum-useful-signal checklist for capturing an experiment run:
 
-```bash
-cd ~/git_projects/<experiment-project>
-git log --oneline           # commit discipline — how many, what order, message quality
-git diff <base>..<head> --stat   # file change scope
-just verify 2>&1 | tail -30      # did it end green
-```
+- `git log --oneline` from the experiment repo — commit discipline (how many, what order, message quality)
+- `git diff <base>..<head> --stat` — file change scope
+- `just verify 2>&1 | tail -30` — did it end green
+- Manual test notes — a few sentences on what worked / didn't in the UI
+- `LOG.md` and `RETRO.md` from the agent (see the [retro suffix block](#progress--retro-suffix--copy-verbatim-mildly-recommended) in the prompt template)
 
-Plus **manual test notes** — a few sentences on what you actually did in the UI and what worked / didn't.
+Optional but helpful:
 
-### Very helpful (if easy)
-
+- `grep -rn "mock\|@patch" apps/api/tests/` — convention violations
 - Backend source diff: `git diff <base>..<head> apps/api/src/`
-- Grep for convention violations: `grep -rn "mock\|@patch" apps/api/tests/`
-- Paths of the test files the agent created — mirror convention respected?
-- Output of `grep -rn "myapp" apps/` — any stale references the rename missed?
+- Cost / time / token notes for the run
 
-### Bonus (if you feel like it)
-
-- Raw conversation log from the Claude Code session
-- Screenshots of interesting moments — Claude asking a question, choosing a design, hitting an error
-- A note on cost/time — how long did it take, how much token budget
-
-### Not needed
-
-You don't have to summarize or analyze anything. Raw outputs are fine. The maintainer does the synthesis in step 4.
+You don't have to summarize or analyze. Raw outputs are fine — the maintainer does the synthesis in step 4. The per-experiment files in `docs/experiments/` have a "Findings" template at the bottom for writing up the result inline.
 
 ## What the assessment (step 4) looks for
 
@@ -218,7 +201,7 @@ Why two files, not one:
 - **RETRO.md is reflection.** Post-hoc synthesis — the agent's interpretation of what it did, what was hard, what the skeleton should tighten. Valuable even though it's self-reported.
 - **Cross-checking.** If RETRO says "I ran `just verify` after each milestone" but LOG only shows it twice across eight milestones, that's a divergence worth noting in step 4.
 
-Why "mildly recommended" not required: both are self-reported process data, not outcome data. The agent might forget to append, or rationalize post-hoc. But even imperfect process data is much better than none — include the block for any experiment where you want to assess CLAUDE.md effectiveness in step 4.
+Why "recommended" but not required: both are self-reported process data, not outcome data. The agent might forget to append, or rationalize post-hoc. But even imperfect process data is much better than none — include the block for any experiment where you want to assess CLAUDE.md effectiveness in step 4. The full prompt shape below includes both files; if you don't care about process signal for a particular experiment, omit the block.
 
 ### `.gitignore` note for experiments
 
@@ -258,7 +241,9 @@ This is the template. v3 (home inventory) was the first experiment to use it ful
 
 ## Related
 
+- [`docs/experiments/INDEX.md`](docs/experiments/INDEX.md) — **the live experiment ladder + per-experiment prompts** (this is where state lives; the rest of this file describes process)
 - [`docs/architecture.md`](docs/architecture.md) — the layering design this skeleton enforces
-- [`docs/testing.md`](docs/testing.md) — the four-tier test pyramid experiments exercise
+- [`docs/testing.md`](docs/testing.md) — the five-tier test pyramid experiments exercise (unit → integration → smoke → e2e → web)
 - [`docs/bootstrap.md`](docs/bootstrap.md) — install + worktree troubleshooting (common step-3 blocker for first-time forks)
+- [`docs/philosophy.md`](docs/philosophy.md) — baseline-vs-extension framing
 - [`CLAUDE.md`](CLAUDE.md) — the agent contract that experiments validate

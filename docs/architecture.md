@@ -32,7 +32,7 @@ The backend follows the architecture from "Architecture Patterns with Python" (P
 
 4. **Entrypoints are thin.** `entrypoints/api.py` does three things: defines request/response schemas (Pydantic), wires dependencies via `Depends()`, and delegates to the service layer. No business logic here.
 
-5. **Testing without mocks.** Tests use `FakeRepository` (an in-memory implementation of the abstract repository). No `unittest.mock`, no `@patch` — just a real object that implements the same interface. This catches bugs that mocks hide. See [`docs/testing.md`](testing.md) for the four-tier test pyramid (unit → integration → smoke → e2e).
+5. **Testing without mocks.** Tests use `FakeRepository` (an in-memory implementation of the abstract repository). No `unittest.mock`, no `@patch` — just a real object that implements the same interface. This catches bugs that mocks hide. See [`docs/testing.md`](testing.md) for the five-tier test pyramid (unit → integration → smoke → e2e → web).
 
 ### Layer rules
 

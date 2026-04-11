@@ -25,7 +25,7 @@ The goal: `git clone` → `just new-project my_app` → `claude` → describe wh
 - **Not an auth system.** No sessions, no tokens, no user model. Add when you need it.
 - **Not a UI component library.** Expo StyleSheet is all you get. No theming, no design system, no component kit.
 - **Not a BaaS client.** Nothing presumes Supabase, Firebase, or any vendor.
-- **Not a test runner for every scenario.** The four tiers cover unit → integration → smoke → e2e. Specialized testing (visual regression, contract testing, chaos, load) is opt-in.
+- **Not a test runner for every scenario.** The five tiers cover unit → integration → smoke → e2e → web. Specialized testing (visual regression, contract testing, chaos, load) is opt-in.
 
 Every "not" is deliberate. Adding any of them to the baseline locks every fork into a choice it didn't ask for.
 
@@ -140,7 +140,7 @@ This is also why the skeleton has a [maintainer's feedback loop](../MAINTAINING.
 ## See also
 
 - [`architecture.md`](architecture.md) — Cosmic Python layering rationale
-- [`testing.md`](testing.md) — the four-tier test pyramid
+- [`testing.md`](testing.md) — the five-tier test pyramid (unit → integration → smoke → e2e → web)
 - [`bootstrap.md`](bootstrap.md) — install + worktree troubleshooting
 - [`vercel.md`](vercel.md) — deploy flow
 - [`pinned-versions.md`](pinned-versions.md) — Expo SDK version pins
