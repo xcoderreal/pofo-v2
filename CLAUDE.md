@@ -77,6 +77,16 @@ Only dig into the source if a fresh bundle still shows the wrong content.
 - **Do NOT upgrade `react-native-reanimated` past `4.1.1`** — 4.1.6+ pulls worklets 0.7.x which mismatches Expo Go SDK 54
 - **Do NOT add `react-native-reanimated/plugin` to `babel.config.js`** — `babel-preset-expo` handles it; the manual plugin causes "property is not writable" on iOS
 
+## Bootstrap issues → `docs/bootstrap.md`
+
+If verification commands fail on the first step rather than on assertions, the workspace probably needs `just install`. Telltale symptoms:
+
+- `Cannot find module 'eslint'` (from `just lint-mobile` / `test-mobile`)
+- `ModuleNotFoundError: No module named 'fastapi'` / `httpx` / `pytest` / `uvicorn`
+- Tests pass in the main checkout but fail in a fresh `git worktree` with missing-module errors
+
+See [`docs/bootstrap.md`](docs/bootstrap.md) for the full symptom → fix table. **`git worktree add` does NOT copy `node_modules/` or `.venv/`** — always run `just install` inside a new worktree before verification commands.
+
 ## Commands (auto-allowed in `.claude/settings.json`)
 
 ```bash
@@ -115,5 +125,6 @@ See `scripts/init-project.py` for what exactly gets renamed. Then edit `README.m
 
 - [`docs/architecture.md`](docs/architecture.md) — design decisions & layer rationale
 - [`docs/testing.md`](docs/testing.md) — four-tier test pyramid (unit → integration → smoke → e2e)
+- [`docs/bootstrap.md`](docs/bootstrap.md) — install + worktree troubleshooting
 - [`docs/vercel.md`](docs/vercel.md) — deploy flow, env vars, gotchas
 - [`docs/pinned-versions.md`](docs/pinned-versions.md) — Expo SDK 54 version pins (critical)
