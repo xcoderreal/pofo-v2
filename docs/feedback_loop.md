@@ -169,11 +169,27 @@ Suggested structure:
 
 **Don't include:** layering rules, testing conventions, file-path conventions, commit cadence, command reminders, "no mocks", "read CLAUDE.md first". All of those are in CLAUDE.md already and duplicating them weakens the experiment's validation power.
 
-### Retro suffix — copy verbatim (mildly recommended)
+### Progress + retro suffix — copy verbatim (mildly recommended)
+
+This block asks the agent to maintain **two** side-channel files: a live `LOG.md` that grows as work happens, and a post-hoc `RETRO.md` written at the end. Both are gitignored — they're signal for the skeleton maintainer, not part of the app.
 
 ```
+As you work, maintain a progress log at LOG.md in the repo root (do
+NOT commit it — leave it untracked). Append one entry per significant
+action — reading a doc, writing a file, running a recipe, hitting an
+error, making a decision. Entries look like:
+
+  ## <n> — <one-line action>
+  **Why:** <reason>
+  **Outcome:** <result, including failures>
+
+Keep LOG.md **append-only**. Never rewrite previous entries. If a
+step turns out to be wrong, add a new entry explaining the correction
+and reference the earlier entry by number. The log is ground truth
+for what happened in what order, including mistakes.
+
 Before reporting done, write a retrospective to RETRO.md at the repo
-root (do NOT commit it — leave it untracked). Cover:
+root (also NOT committed — leave untracked). Cover:
 
   1. Which files from CLAUDE.md and docs/ did you actually read, and
      when? (At the start? When you hit a decision? Never?)
@@ -190,11 +206,21 @@ root (do NOT commit it — leave it untracked). Cover:
      codifying.
 
 Be honest, including about places where you went back and fixed
-something mid-course. This retro goes to the skeleton maintainer to
+something mid-course. Both files go to the skeleton maintainer to
 harden the docs for the next experiment.
 ```
 
-Why "mildly recommended" not required: the retro is self-reported process data, not outcome data. The agent might misremember, omit, or rationalize post-hoc. But even imperfect process data is much better than none — include the retro block for any experiment where you want to assess CLAUDE.md effectiveness in step 4.
+Why two files, not one:
+
+- **LOG.md is ground truth.** Append-only discipline means it records what actually happened, including failures, not just what the agent wants to present. The user can `tail -f LOG.md` in another terminal to watch progress live.
+- **RETRO.md is reflection.** Post-hoc synthesis — the agent's interpretation of what it did, what was hard, what the skeleton should tighten. Valuable even though it's self-reported.
+- **Cross-checking.** If RETRO says "I ran `just verify` after each milestone" but LOG only shows it twice across eight milestones, that's a divergence worth noting in step 4.
+
+Why "mildly recommended" not required: both are self-reported process data, not outcome data. The agent might forget to append, or rationalize post-hoc. But even imperfect process data is much better than none — include the block for any experiment where you want to assess CLAUDE.md effectiveness in step 4.
+
+### `.gitignore` note for experiments
+
+After running `just new-project`, a quick manual step: append `LOG.md` and `RETRO.md` to `.gitignore` so the agent's side-channel files don't accidentally get staged. (Or: rely on the agent to be disciplined about not committing them — both are acceptable.)
 
 ### Full prompt shape
 
