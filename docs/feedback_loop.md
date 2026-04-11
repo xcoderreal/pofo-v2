@@ -130,9 +130,103 @@ When you want to add a new rung:
 
 1. Describe the app in 3–5 sentences — what, for whom, why it tests a new axis
 2. Identify what CLAUDE.md rule or skeleton capability it stresses that previous experiments didn't
-3. Write a slim natural-language prompt (follow the pattern used for v3 home inventory — spec only, trust CLAUDE.md for the HOW)
+3. Write the prompt using the template below — preamble and retro are reusable verbatim; only the spec body changes
 4. Run it as a full cycle (steps 1–4)
 5. Update the complexity ladder table in this doc with the results
+
+## Experiment prompt template
+
+Every experiment prompt has the same shape: a **preamble** that defers to CLAUDE.md, a **spec body** (the actual experiment), and a **retro suffix** that captures process signal. Preamble and retro are reusable verbatim across experiments; only the spec body changes.
+
+### Preamble — copy verbatim
+
+```
+CLAUDE.md has the layering rules, testing conventions, file-path
+conventions, commands, and "adding a resource" ordering. Follow it —
+I'm not restating it here. If something in CLAUDE.md is unclear, stop
+and ask before inventing a convention.
+```
+
+This is the single most load-bearing block of any experiment prompt. It:
+
+- Tells the agent where the rules live
+- Explicitly says "I'm not restating them" so the agent doesn't expect them inline
+- Forces "ask before inventing" to surface ambiguity rather than silently papering over it
+
+**If you catch yourself wanting to add "no mocks" or "domain must be framework-free" or "tests go in tests/unit/service/" to an experiment prompt, stop.** Those are in CLAUDE.md. If they're not working, the fix is to strengthen CLAUDE.md, not to patch around it in every prompt. Prompt-level duplication is a skeleton smell.
+
+### Spec body — varies per experiment
+
+Suggested structure:
+
+- **One-line purpose** — "Build a X tracker..."
+- **What users can do** — features as bullets, specific enough to implement
+- **Derived status / computed fields** — anything that should be computed, not stored
+- **Required behaviors** — layer-agnostic; don't prescribe where methods live (that's the skeleton's judgment test)
+- **Invariants** — rules the system must enforce
+- **Scope** — in-memory? single-user? deliberate out-of-scope items? frontend constraints not in CLAUDE.md (no state libs, no UI libs)
+- **Definition of done** — concrete observable criteria (verify passes, manual test steps, math consistency, "looks like it belongs" check)
+
+**Don't include:** layering rules, testing conventions, file-path conventions, commit cadence, command reminders, "no mocks", "read CLAUDE.md first". All of those are in CLAUDE.md already and duplicating them weakens the experiment's validation power.
+
+### Retro suffix — copy verbatim (mildly recommended)
+
+```
+Before reporting done, write a retrospective to RETRO.md at the repo
+root (do NOT commit it — leave it untracked). Cover:
+
+  1. Which files from CLAUDE.md and docs/ did you actually read, and
+     when? (At the start? When you hit a decision? Never?)
+  2. Which `just` recipes did you run, in order? One-line reason each.
+  3. Architectural decisions you made that weren't explicitly in the
+     spec — where you placed methods, how you modeled entities,
+     anything you had to invent because the docs didn't cover it.
+  4. Rules you noticed in CLAUDE.md but had to consciously work around
+     or ignore, and why.
+  5. Questions you wanted to ask but didn't — how did you decide
+     instead?
+  6. What would you add to CLAUDE.md or docs/ based on building this?
+     Rules that were unclear, things you had to guess, patterns worth
+     codifying.
+
+Be honest, including about places where you went back and fixed
+something mid-course. This retro goes to the skeleton maintainer to
+harden the docs for the next experiment.
+```
+
+Why "mildly recommended" not required: the retro is self-reported process data, not outcome data. The agent might misremember, omit, or rationalize post-hoc. But even imperfect process data is much better than none — include the retro block for any experiment where you want to assess CLAUDE.md effectiveness in step 4.
+
+### Full prompt shape
+
+```
+<one-line purpose, e.g. "Build a home inventory tracker in this repo.">
+
+<preamble block — verbatim>
+
+What users can do:
+  - ...
+
+Derived status (computed, not stored):
+  - ...
+
+Required behaviors (you decide which layer each belongs in):
+  - ...
+
+Invariants:
+  - ...
+
+Scope:
+  - ...
+
+Definition of done:
+  - ...
+
+<retro suffix block — verbatim>
+
+Go.
+```
+
+This is the template. v3 (home inventory) was the first experiment to use it fully; future experiments should copy-paste the preamble and retro verbatim, fill in the middle, and run.
 
 ## Related
 
