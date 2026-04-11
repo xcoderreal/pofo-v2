@@ -115,6 +115,32 @@ When the skeleton grows beyond `MemoryItemRepository` (e.g. you add a `SqliteIte
 
 The adapter conformance unit tests are the contract. The smoke/e2e re-runs prove the contract holds end-to-end. Together, that's the testing story for any new adapter.
 
+### Recommended: parametrize the unit tests over both adapters
+
+When you have a real adapter alongside `MemoryItemRepository`, the cleanest pattern is **one test file** that parametrizes over both:
+
+```python
+# apps/api/tests/unit/adapters/test_item_repositories.py
+import pytest
+from myapp.adapters.memory_repository import MemoryItemRepository
+from myapp.adapters.sqlite_repository import SqliteItemRepository
+
+@pytest.fixture(params=["memory", "sqlite"])
+def repo(request, tmp_path):
+    if request.param == "memory":
+        return MemoryItemRepository()
+    return SqliteItemRepository(database_path=str(tmp_path / "items.db"))
+
+def test_add_then_get(repo):
+    ...
+```
+
+Each test runs once per adapter; a single conformance failure in either implementation flags clearly. Adapter-specific tests (e.g. SQLite cross-instance persistence) live in sibling files or guarded with `if isinstance(repo, ...)`. This was the pattern the v2 persistence experiment converged on after the v1 separate-file approach felt redundant.
+
+### How env-var swapping works in smoke and e2e
+
+The smoke and e2e tiers spawn `uvicorn` as a subprocess via the `base_url` fixture in `apps/api/tests/conftest.py`. **The subprocess inherits the parent shell's environment** — so any env var you set before invoking `just test-smoke-local` (or `pytest tests/smoke/`) reaches the spawned uvicorn unchanged. That's why `MYAPP_REPOSITORY=sqlite just test-smoke-local` re-runs the entire smoke tier against the SQLite adapter with zero fixture changes.
+
 ## Web tier — capabilities and how to extend
 
 The web tier (`apps/mobile/tests/web/`) uses [Playwright](https://playwright.dev) to load the exported Expo web bundle in headless Chromium and assert that nothing crashes during render. It's the only tier in the pyramid that catches **runtime UI errors** — bugs that pass `tsc --noEmit` and `expo export` but blow up the moment a real browser tries to render the page (CSS shim issues, hydration failures, missing globals, etc.).

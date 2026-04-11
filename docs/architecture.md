@@ -67,9 +67,9 @@ To add a database-backed repository (e.g., SQLite):
 
 1. Create `adapters/sqlite_repository.py` implementing `ItemRepository`
 2. Change `get_repo()` in `entrypoints/api.py` to dispatch on a `Settings` field (e.g. `repository: str = "memory"`) so the adapter is selectable via env var, not code change
-3. Add the new env vars to `apps/api/.env.sample` so they're discoverable
-4. Add unit tests under `apps/api/tests/unit/adapters/` using `tmp_path` (or equivalent) for isolation per test
-5. The smoke and e2e tiers will exercise the new adapter automatically when the env var is set — no test rewrites required
+3. Add the new env vars to `apps/api/.env.sample` so they're discoverable (CLAUDE.md spells this out — every new `Settings` field needs a corresponding documented entry)
+4. Add unit tests under `apps/api/tests/unit/adapters/` using `tmp_path` (or equivalent) for isolation per test. **See [`docs/testing.md` § "Where adapter conformance lives"](testing.md#where-adapter-conformance-lives)** for the parametrize-over-adapters pattern that lets one test file cover both `Memory` and your new adapter.
+5. The smoke and e2e tiers will exercise the new adapter automatically when the env var is set — no test rewrites required. The smoke/e2e fixtures spawn `uvicorn` as a subprocess that **inherits the parent shell's environment**, so `MYAPP_REPOSITORY=sqlite just test-smoke-local` swaps the adapter for that run with no fixture changes.
 6. Done. The domain and service layers should not change.
 
 **Threading note for sync I/O adapters.** FastAPI runs sync route handlers in a threadpool. Most database clients (`sqlite3`, `psycopg`, `redis-py`, etc.) are not safe to share across threads without specific configuration (e.g. `sqlite3` requires `check_same_thread=False`, and even then a single connection is a contention point). For low-traffic services, the simplest correct pattern is **a fresh client per call** inside the repository — no shared state, no thread-safety concerns. If you need pooling later, that's a separate decision driven by load, not a default. Document the choice in the adapter's class docstring so the next reader doesn't have to re-derive it.
