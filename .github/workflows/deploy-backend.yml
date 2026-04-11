@@ -1,27 +1,9 @@
 name: Deploy Backend
 
-# MANUAL TRIGGER ONLY — this workflow is opt-in scaffolding.
-#
-# Most skeleton users rely on Vercel's native GitHub integration, which
-# auto-deploys on push without any GitHub Actions involvement. If that's
-# you, leave this workflow alone — it won't run.
-#
-# If you want CI-driven deploys instead (e.g. to gate deploys on the full
-# test pyramid passing), do two things:
-#
-#   1. Add these to GitHub → Settings → Secrets → Actions:
-#        VERCEL_TOKEN       # https://vercel.com/account/tokens
-#        VERCEL_ORG_ID      # from .vercel/project.json after `vercel link`
-#        VERCEL_PROJECT_ID  # from .vercel/project.json after `vercel link`
-#
-#   2. Change the trigger block below from `workflow_dispatch` to:
-#        push:
-#          branches: [main]
-#          paths: [apps/api/**]
-#
-# Until then, you can trigger this manually from the Actions tab.
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [apps/api/**]
 
 jobs:
   deploy:

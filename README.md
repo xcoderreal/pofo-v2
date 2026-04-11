@@ -191,7 +191,7 @@ See [`docs/vercel.md`](docs/vercel.md) for the full guide: first-time setup, env
 | `backend.yml` | `apps/api/**` | ruff, unit, integration, smoke |
 | `e2e.yml` | push to `main` + nightly cron | e2e suite (real HTTP) |
 | `heartbeat.yml` | manual / cron (disabled by default) | smoke against prod URL |
-| `deploy-backend.yml` | `workflow_dispatch` (manual, opt-in) | `vercel --prod` — most users rely on Vercel's GitHub integration instead; see [`docs/vercel.md`](docs/vercel.md) |
+| `deploy-backend.yml` | push to `main` + `apps/api/**` | `vercel --prod` |
 
 See [`docs/testing.md`](docs/testing.md) for the four-tier test pyramid
 (unit → integration → smoke → e2e) and how to pick the right tier for a

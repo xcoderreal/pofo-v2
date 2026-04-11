@@ -128,7 +128,7 @@ Three workflows, each scoped to its app's file paths:
 | `backend.yml` | `apps/api/**` | lint (ruff), test-unit, test-integration, test-smoke |
 | `e2e.yml` | push to main + nightly cron | test-e2e-local |
 | `heartbeat.yml` | manual / cron (disabled by default) | smoke against prod URL |
-| `deploy-backend.yml` | `workflow_dispatch` (manual, opt-in) | Vercel deploy (Vercel's GitHub integration handles most cases) |
+| `deploy-backend.yml` | push to main + `apps/api/**` | Vercel deploy |
 
 ## Package Managers
 
