@@ -25,6 +25,10 @@ Layer import rules:
 
 ## Adding a new resource (the pattern)
 
+**First resource in a fresh fork:** replace the `Item` scaffolding with your new domain (delete `domain/model.py`'s `Item`, `service/item_service.py`, `adapters/memory_repository.py`'s `MemoryItemRepository`, and their tests — then follow the steps below with your new name). The skeleton ships with `Item` as a reference template, not a required base class. Keeping it alongside your first real resource is the "abstraction for a hypothetical second use case" that `Things to avoid` warns against.
+
+**Subsequent resources:** add alongside using the pattern below. Don't touch the existing ones.
+
 To add a new resource (say, `User`), create files in this exact order:
 
 1. **`domain/model.py`** — add the `User` dataclass
