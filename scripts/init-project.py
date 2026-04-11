@@ -80,11 +80,13 @@ NEVER_SCAN = {
     "scripts/init-project.py",
 }
 
-# Maintainer-only files that should be REMOVED (not rewritten) during a fork.
-# These describe how the original skeleton is maintained and have no place
-# in a user's forked project.
+# Maintainer-only paths that should be REMOVED (not rewritten) during a
+# fork. These describe how the original skeleton is maintained and have
+# no place in a user's forked project. Both files and directories are
+# supported — directories are removed recursively.
 MAINTAINER_ONLY_PATHS = [
     "MAINTAINING.md",
+    "docs/experiments",
 ]
 
 # Substring filters — any path containing one of these is skipped.
@@ -191,16 +193,24 @@ def main() -> int:
                 print(f"  updated: {rel}")
             changed += 1
 
-    # Remove maintainer-only files that don't belong in a fork.
+    # Remove maintainer-only paths (files or directories) that don't belong
+    # in a fork.
+    import shutil
+
     for rel in MAINTAINER_ONLY_PATHS:
         path = repo / rel
         if not path.exists():
             continue
         if args.dry_run:
-            print(f"  would remove: {rel}")
+            kind = "directory" if path.is_dir() else "file"
+            print(f"  would remove ({kind}): {rel}")
         else:
-            path.unlink()
-            print(f"  removed:  {rel}")
+            if path.is_dir():
+                shutil.rmtree(path)
+                print(f"  removed (directory): {rel}")
+            else:
+                path.unlink()
+                print(f"  removed (file): {rel}")
         changed += 1
 
     # Rename the Python package directory last, after all text edits land.
