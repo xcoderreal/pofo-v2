@@ -110,17 +110,34 @@ curl $URL/api/items
 
 **Caveat: serverless cold starts wipe the in-memory repo.** The default `MemoryItemRepository` lives in RAM inside a single Lambda invocation. Between requests, Vercel may spin up a fresh function instance and your POSTed items disappear. For anything beyond a smoke test, swap in a real adapter (SQLite-on-disk won't work either — Lambdas have ephemeral storage — use Postgres, Supabase, Turso, Upstash Redis, etc.).
 
-## CI auto-deploy
+## How deploys happen (two options)
 
-`.github/workflows/deploy-backend.yml` runs `vercel --prod` on every push to `main` that touches `apps/api/**`. For it to work, set these in GitHub → Settings → Secrets → Actions:
+**Default: Vercel's native GitHub integration.** When you run `vercel link` and connect the repo to a Vercel project, Vercel's own GitHub App watches for pushes and auto-deploys. No GitHub Actions involved. This is what most skeleton users want — zero secrets in CI, zero YAML to maintain, and the deploy status shows up as a Vercel check on the commit.
 
-| Secret | Where to find it |
-|---|---|
-| `VERCEL_TOKEN` | https://vercel.com/account/tokens — create a new token |
-| `VERCEL_ORG_ID` | `.vercel/project.json` after running `vercel link` |
-| `VERCEL_PROJECT_ID` | `.vercel/project.json` after running `vercel link` |
+**Opt-in: CI-driven deploy via `deploy-backend.yml`.** The skeleton ships a `.github/workflows/deploy-backend.yml` file that's configured for **manual trigger only** (`workflow_dispatch`) by default. It won't run on push unless you explicitly enable it. Use this only if you want to gate deploys on the full test pyramid passing in CI before shipping.
 
-The workflow only runs on backend changes. Frontend changes deploy via Vercel's Git integration (if enabled in the dashboard), or manually via `vercel --prod`.
+### Enabling CI-driven deploy
+
+1. Add these secrets in GitHub → Settings → Secrets → Actions:
+
+   | Secret | Where to find it |
+   |---|---|
+   | `VERCEL_TOKEN` | https://vercel.com/account/tokens — create a new token |
+   | `VERCEL_ORG_ID` | `.vercel/project.json` after running `vercel link` |
+   | `VERCEL_PROJECT_ID` | `.vercel/project.json` after running `vercel link` |
+
+2. Open `.github/workflows/deploy-backend.yml` and change the `on:` block from `workflow_dispatch` to:
+
+   ```yaml
+   on:
+     push:
+       branches: [main]
+       paths: [apps/api/**]
+   ```
+
+3. Push the change. Subsequent pushes to `main` that touch `apps/api/**` will auto-deploy via Actions.
+
+**Either way** — whether you use Vercel's native integration or CI-driven deploys — you should have `vercel link` set up locally so you can run `vercel --prod` manually for ad-hoc deploys.
 
 ## Gotchas
 
