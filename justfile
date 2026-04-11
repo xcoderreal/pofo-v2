@@ -20,6 +20,21 @@ test-unit:
     cd apps/api && uv run pytest tests/unit/
 test-integration:
     cd apps/api && uv run pytest tests/integration/
+# `test-smoke-local` spawns its own uvicorn via the conftest fixture.
+test-smoke-local:
+    cd apps/api && uv run pytest tests/smoke/ -v
+# `test-smoke url=...` runs smoke against an externally-managed URL.
+# Example: just test-smoke url=http://127.0.0.1:8090
+#          just test-smoke url=https://staging.example.com
+test-smoke url:
+    cd apps/api && SKELETON_E2E_URL={{url}} uv run pytest tests/smoke/ -v
+# `test-e2e-local` spawns its own uvicorn via the conftest fixture.
+test-e2e-local:
+    cd apps/api && uv run pytest tests/e2e/ -v
+# `test-e2e url=...` runs e2e against an externally-managed URL.
+# Writes are disabled unless url is localhost or SKELETON_E2E_ALLOW_WRITES=1.
+test-e2e url:
+    cd apps/api && SKELETON_E2E_URL={{url}} uv run pytest tests/e2e/ -v
 test-mobile:
     cd apps/mobile && bunx tsc --noEmit
 
@@ -47,40 +62,11 @@ lint-mobile:
     cd apps/mobile && bunx expo lint
 
 # ─── Full health check ───────────────────────────────────────
-# `just verify` = test + check + live API smoke test end-to-end.
-# Optional positional port arg falls back to $MYAPP_PORT then 8090:
-#   just verify           # default port
-#   just verify 9191      # custom port
-#   MYAPP_PORT=9191 just verify   # also works
-verify port=env_var_or_default("MYAPP_PORT", "8090"): test check
-    just smoke {{port}}
-
-smoke port=env_var_or_default("MYAPP_PORT", "8090"):
-    #!/usr/bin/env bash
-    set -euo pipefail
-    PORT={{port}}
-    echo "==> smoke: using port $PORT"
-    lsof -i :$PORT -t | xargs kill 2>/dev/null || true
-    cd apps/api
-    uv run uvicorn myapp.entrypoints.api:app --host 127.0.0.1 --port $PORT &
-    PID=$!
-    trap 'kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true' EXIT
-    sleep 1.5
-    BASE="http://127.0.0.1:$PORT"
-    echo "==> GET /health"
-    curl -fsS "$BASE/health" | grep -q '"status":"ok"'
-    echo "==> POST /items"
-    curl -fsS -X POST "$BASE/items" \
-        -H 'content-type: application/json' \
-        -d '{"id":"smoke","name":"smoke","description":"","tags":["t1"]}' \
-        -o /dev/null -w '%{http_code}\n' | grep -q '^201$'
-    echo "==> GET /items"
-    curl -fsS "$BASE/items" | grep -q '"id":"smoke"'
-    echo "==> GET /items/smoke"
-    curl -fsS "$BASE/items/smoke" | grep -q '"id":"smoke"'
-    echo "==> GET /items?tag=t1"
-    curl -fsS "$BASE/items?tag=t1" | grep -q '"id":"smoke"'
-    echo "smoke test passed"
+# `just verify` = fast pre-commit / PR gate.
+# Runs unit + integration + smoke-local + check. Does NOT run e2e (use
+# `just test-e2e-local` for that) or mobile typecheck (use `just test` for
+# the full CI-equivalent run).
+verify: test-unit test-integration test-smoke-local check
 
 # ─── Build artifacts ─────────────────────────────────────────
 # `just build-web` = produce the static web bundle (matches Vercel's build).
