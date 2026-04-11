@@ -103,9 +103,28 @@ kill:
     @echo "killed dev servers (backend ${MYAPP_PORT:-8090}, web 8091)"
 
 # ─── Scaffolding: fork this skeleton into a new project ──────
+# `just new-project <slug>` = rename placeholder + install + lint-fix + verify.
+# Single command for forking. The python script is the primitive (plain text
+# substitution, glob-discovered files); this recipe chains the steps you'd
+# always want to run afterward.
+#
+# For rename-only (no install or verify), call the script directly:
+#   python3 scripts/init-project.py <slug>
+#
 # Usage: just new-project my_app
-#   - Renames Python package 'myapp' → 'my_app' everywhere
-#   - Updates env prefix, Expo slug, bundle id, display name
-#   - Does NOT touch README.md or docs/ (review by hand)
+#   - Renames 'myapp' → 'my_app' across src + tests + configs + Expo app
+#   - Updates env prefix (MY_APP_), Expo slug, bundle id, display name ("My App")
+#   - Runs bun install + uv sync
+#   - Runs ruff --fix to normalize import order after the rename
+#   - Runs `just verify` as a baseline check
+#   - Does NOT touch README.md or docs/ (review by hand after)
 new-project slug:
     python3 scripts/init-project.py {{slug}}
+    bun install
+    cd apps/api && uv sync --all-extras
+    cd apps/api && uv run ruff check --fix src/ tests/
+    @echo ""
+    @echo "─── running baseline verification ──────────────────────"
+    just verify
+    @echo ""
+    @echo "✓ Fork complete. Launch Claude Code when ready: claude"
