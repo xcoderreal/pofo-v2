@@ -94,12 +94,45 @@ If the agent had to fight the skeleton in any of these places, it's a real gap:
 - "I had to change entrypoints/api.py beyond `get_repo()`" → the wiring abstraction leaked
 - "The test helper assumed memory" → conftest needs to parameterize over adapters
 
-## Findings (fill in after the run)
+## Findings
 
-> **Run on:** _date_  
-> **Agent:** _Claude version_  
-> **Final commit:** _sha_  
-> **Verify status:** _green / red / partial_  
-> **Skeleton bugs surfaced:** _list_  
-> **Promotable patterns:** _list_  
-> **Status:** _⏳ / 🟡 / ✅ / 🟠 / ❌_
+### v1 — 2026-04-11
+
+**Verify status:** ✅ green on both adapters
+- `just verify` (memory) — all tiers pass: 13 unit + 15 integration + 4 smoke + 16 mobile-unit + 1 web + check
+- Integration + smoke + e2e re-run with `MYAPP_REPOSITORY=sqlite MYAPP_DATABASE_PATH=...` — 31 tests pass
+
+**Skeleton bugs surfaced:** none blocking. Hard gates all green; layering held; domain and service layers byte-identical to start state.
+
+**What the agent built:**
+- `apps/api/src/myapp/adapters/sqlite_repository.py` — 65 lines, stdlib `sqlite3` + `json`. No SQLAlchemy. Fresh connection per method call (FastAPI threadpool-aware).
+- Two new `Settings` fields: `repository: str = "memory"` and `database_path: str = "data/items.db"`.
+- `get_repo()` in `entrypoints/api.py` dispatches on `settings.repository`.
+- `apps/api/tests/unit/adapters/test_sqlite_repository.py` — 8 tests using `tmp_path` for isolation.
+- Schema creation via `CREATE TABLE IF NOT EXISTS` in the adapter constructor — no migrations infrastructure.
+
+**Best signal:** the agent reached the right pattern from CLAUDE.md + architecture.md alone — chose stdlib over SQLAlchemy without prompting, used `tmp_path` for test isolation, kept the integration tier adapter-agnostic.
+
+**Promotable patterns** (landed in skeleton post-v1):
+- `data/` and `*.db` patterns in `.gitignore` — preemptive cleanup
+- CLAUDE.md note: when extending `Settings`, also update `apps/api/.env.sample`
+- `docs/architecture.md` § "Adding a new adapter" — expanded with the FastAPI threadpool / fresh-client-per-call pattern note
+- `docs/testing.md` — new "Where adapter conformance lives" section codifying the unit-tier-plus-env-var-swap pattern the agent invented
+
+**Deliberately not landed:**
+- A worked "Adding a SQL adapter" example with code in `docs/architecture.md` — would remove the validation power of the v2 re-run by giving the next agent something to copy-paste rather than think through
+- A `just verify-sqlite` recipe — the skeleton ships no SQL adapter, so there's nothing to verify against; doc-level guidance is sufficient
+
+**Process notes:**
+- Zero git commits during the experiment (worked with uncommitted changes throughout). Same pattern as v3 home-inventory. Two consecutive experiments without commit cadence — gray area, may revisit.
+- LOG.md was 13 entries, linear, one self-caught format failure (`fmt-api-check`) followed by a clean re-run. Healthy.
+- RETRO.md §6 listed 4 skeleton improvement candidates; 3 of them landed as the post-v1 doc updates. The 4th (worked example) was deliberately deferred.
+
+**Status:** ✅ v1 passed cleanly; v2 re-run pending to validate the doc fixes are discoverable.
+
+### v2 — pending
+
+> **Run on:** _date_
+> **Final commit:** _sha_
+> **Delta from v1:** _did the agent reference the new architecture.md note? did the new testing.md callout get used? did the agent's RETRO §6 shrink?_
+> **Status:** _⏳ pending_

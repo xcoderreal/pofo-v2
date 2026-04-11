@@ -102,6 +102,19 @@ Override with `SKELETON_E2E_ALLOW_WRITES=1`. This is the safety valve
 that lets you run `just test-smoke url=https://prod.example.com` as a
 cron heartbeat without POSTing junk into your prod database.
 
+## Where adapter conformance lives
+
+When the skeleton grows beyond `MemoryItemRepository` (e.g. you add a `SqliteItemRepository`, a `SupabaseItemRepository`, etc.), tests for the new adapter live in **two places**, not three:
+
+| Question | Tier | How |
+|---|---|---|
+| "Does this adapter implement `ItemRepository` correctly?" | **Unit** — `apps/api/tests/unit/adapters/test_<name>_repository.py` | Instantiate the adapter against an isolated backing store (`tmp_path` for SQLite, a test schema for Postgres, etc.) and exercise its methods directly |
+| "Does the full HTTP flow work against this adapter?" | **Smoke + E2E** — re-run the existing tiers with the env var that selects the new adapter | No new test files needed; the existing smoke/e2e suites are deliberately adapter-agnostic |
+
+**Integration tier deliberately uses `FakeItemRepository` and stays adapter-agnostic.** Don't parametrize integration tests over real adapters — that's the wrong tool. Integration's job is "is the FastAPI wiring correct" (validation, deps, routing), not "does this adapter behave like a repository should." Mixing the two muddies the role and slows the feedback loop.
+
+The adapter conformance unit tests are the contract. The smoke/e2e re-runs prove the contract holds end-to-end. Together, that's the testing story for any new adapter.
+
 ## Web tier — capabilities and how to extend
 
 The web tier (`apps/mobile/tests/web/`) uses [Playwright](https://playwright.dev) to load the exported Expo web bundle in headless Chromium and assert that nothing crashes during render. It's the only tier in the pyramid that catches **runtime UI errors** — bugs that pass `tsc --noEmit` and `expo export` but blow up the moment a real browser tries to render the page (CSS shim issues, hydration failures, missing globals, etc.).

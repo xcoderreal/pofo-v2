@@ -43,6 +43,8 @@ To add a new resource (say, `User`), create files in this exact order:
 
 Mimic the existing `Item` / `ItemRepository` / `ItemService` / routes as your template. Keep the dependency injection pattern consistent: `get_repo()` returns the concrete adapter (cached with `@lru_cache` so in-memory state persists); `get_service()` takes `repo` via `Depends()`.
 
+**When you extend `Settings` with new env vars** (e.g. adding a persistence adapter, an external API key, a feature flag), **also add them to `apps/api/.env.sample`** with a comment explaining the choice. The sample file is the discovery surface for "what env vars does this app accept" — config.py alone isn't enough. Mirror the existing entries (`MYAPP_SECRET_KEY`, `MYAPP_PORT`) for the comment style.
+
 ## Testing philosophy
 
 - **Five-tier pyramid.** `apps/api/tests/unit/` (domain + service via `FakeRepository`), `apps/api/tests/integration/` (ASGI in-process via `TestClient`), `apps/api/tests/smoke/` (real HTTP, critical path), `apps/api/tests/e2e/` (real HTTP, comprehensive), `apps/mobile/tests/web/` (real browser via Playwright — catches runtime UI errors invisible to tsc). See [`docs/testing.md`](docs/testing.md) for the full decision tree and capabilities.

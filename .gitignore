@@ -13,6 +13,15 @@ __pycache__/
 apps/mobile/test-results/
 apps/mobile/playwright-report/
 
+# Persistence-adapter scratch files (SQLite, etc.) — only created if a fork
+# adds a non-memory adapter. Preemptively ignored so dev databases don't
+# accidentally get committed.
+data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
 # Env
 .env
 .env.local
