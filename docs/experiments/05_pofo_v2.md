@@ -25,6 +25,29 @@ Domain:
   - Current prices (fetched from a free API like yfinance or CoinGecko,
     cached briefly so repeated views don't hammer the upstream)
 
+The portfolio must support flexible breakdowns across two dimensions
+— instruments and accounts — so users can answer questions like:
+
+  "How is AAPL doing across all my accounts?"
+  "What's in my Schwab brokerage?"
+  "How has my total portfolio changed over time?"
+  "How has AAPL performed in my Fidelity account specifically?"
+
+Concretely, the views should support:
+  - By instrument (all accounts combined)
+  - By account (all instruments in that account)
+  - By account + instrument (one instrument in one account)
+  - Portfolio value over time (one account, or all accounts)
+  - Instrument performance over time (one or more instruments,
+    in one or all accounts)
+
+The UI must stay intuitive despite this dimensionality. Think:
+a single portfolio dashboard with progressive drill-down, not 6
+separate pages. Start with the "total portfolio" overview, let
+users tap/click into an account or instrument to narrow the view.
+The same screen structure should work for any combination — the
+data hooks change, the layout doesn't.
+
 Replace the existing Item + Category scaffolding with the domain above.
 
 Read CLAUDE.md and docs/architecture.md before touching anything —
@@ -37,6 +60,8 @@ Definition of done:
   - I can see my positions (shares held, cost basis, current value)
   - I can see capital gains (realized from sells, unrealized from
     current holdings)
+  - I can view portfolio value by instrument, by account, and both
+  - I can see how a portfolio (or a slice of it) changes over time
   - Current prices come from a real external API, cached
   - Unit tests cover the FIFO lot matching and capital gains math
   - `just verify` is green
@@ -97,16 +122,23 @@ Go.
 - **Caching in the adapter**, not the service layer
 - **Injectable client + clock** on the price adapter for unit testing (MockTransport or similar)
 - **FakePriceSource** in `tests/fake_price_source.py` (or equivalent)
-- **Playwright specs** for key flows: create account, log trade, view positions, view capital gains
+- **Playwright specs** for key flows: create account, log trade, view positions, view capital gains, drill down by account/instrument
 - **testID props** on interactive elements for stable Playwright selectors
 - **`hooks/` directory** with one file per resource (useAccounts, useInstruments, useTransactions, usePositions, useCapitalGains)
 - **Loading/error states** handled uniformly via TanStack Query's `isLoading`/`error`
+- **Drill-down UI** — progressive disclosure, not 6 separate pages. Dashboard → tap account → see instruments in it. Tap instrument → see performance. The same component/hook structure handles any slice.
+- **Query param-driven filtering** — the breakdown dimensions (account_id, instrument_id) should flow through URL query params or route params, not component state. This makes drill-downs deep-linkable and back-button friendly.
+- **Reusable position/gains components** — the same position table and gains summary component should work regardless of the filter slice (all accounts, one account, one instrument). Data hooks accept optional filter params; the component doesn't know which slice it's showing.
 
 ### Skeleton-improvement signals — things to watch for in the RETRO
 
 - **Multi-entity service orchestration:** did the agent need a service that takes 2+ repositories? If so, how did they wire it? (This is the FK orchestration question we designed the Category example to answer.)
 - **Computed vs stored:** positions and capital gains are computed from transactions. Did the agent store them (wrong) or compute on read (right)? If computed, is the computation pure (testable)?
 - **FIFO lot tracking:** this is the hardest domain logic. Did it end up in `domain/` (ideal) or `service/` (acceptable) or `entrypoints/` (wrong)?
+- **The breakdown API design:** how did the agent handle the dimensionality? One endpoint with query params (`GET /positions?account_id=X&instrument_id=Y`)? Or separate endpoints per slice? The single-endpoint-with-filters approach is cleaner and matches how `usePositions({ account_id, instrument_id })` naturally composes with TanStack Query's `queryKey`.
+- **UI structure for drill-down:** did the agent build one dashboard with progressive drill-down (good) or 6 separate pages (bad)? How many shared components vs one-off screens?
+- **Time-series data shape:** how does the "portfolio value over time" API work? Does the backend compute daily snapshots, or does the frontend derive them from transactions + historical prices? Backend-computed is simpler for the frontend but requires price history storage.
+- **Hook composition:** with 6 breakdown combinations, did the hooks stay clean (one `usePositions` with optional filters) or multiply (usePositionsByAccount, usePositionsByInstrument, ...)?
 - **Transaction lifecycle:** can you sell more shares than you own? Does the service validate this? Where does the validation live?
 - **Price source cache TTL:** is it configurable or hardcoded? Is TTL testable (injectable clock)?
 - **The "replace scaffolding" step:** did the agent cleanly remove Item + Category, or did it leave remnants?
