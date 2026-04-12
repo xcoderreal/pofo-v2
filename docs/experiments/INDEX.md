@@ -25,6 +25,7 @@ Tracking the next round of skeleton-hardening experiments. Each row links to a s
 | 02 | **Auth middleware** | Layering accommodates cross-cutting concerns (request-scoped state, user context propagation) without leaking auth into the domain or service layer | ⏳ Not yet run | [`02_auth_middleware.md`](02_auth_middleware.md) |
 | 03 | **Multi-screen frontend** | "No state management library" rule survives at scale — local useState + refetch holds for 5+ screens with shared data, deep links, navigation state | ⏳ Not yet run | [`03_multi_screen_frontend.md`](03_multi_screen_frontend.md) |
 | 04 | **External API adapter** | Rule 4 of the layering doc holds for non-storage, non-CRUD adapters — a third-party price/weather fetcher is "just another adapter" and the test pyramid story generalizes from storage to network | ⏳ Not yet run | [`04_external_api_adapter.md`](04_external_api_adapter.md) |
+| 05 | **Pofo v2 (portfolio tracker)** | Full stack at real-app scale — multi-entity domain with FIFO lot matching + capital gains, FK relationships, external price API adapter, TanStack Query hooks, multi-screen frontend. The final boss. | ⏳ Not yet run | [`05_pofo_v2.md`](05_pofo_v2.md) |
 
 ## Status legend
 
