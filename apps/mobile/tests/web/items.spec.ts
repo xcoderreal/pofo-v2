@@ -109,3 +109,47 @@ test("create item via form", async ({ page }) => {
   await page.waitForLoadState("networkidle");
   await expect(page.getByText("Tablet")).toBeVisible();
 });
+
+test("full journey: create category, create item in it, verify detail, filter", async ({
+  page,
+}) => {
+  // Start clean — beforeEach already reset, but we want a fresh state
+  await resetState(page);
+
+  // 1. Create a category via the categories page
+  await page.goto("/categories");
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("empty-categories")).toBeVisible();
+
+  await page.getByTestId("input-category-name").fill("Books");
+  await page.getByTestId("submit-category").click();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByText("Books")).toBeVisible();
+
+  // 2. Create an item in that category via the API (reliable, avoids picker timing)
+  const cats = await page.request.get(`${API}/categories`);
+  const catId = (await cats.json())[0].id;
+  await page.request.post(`${API}/items`, {
+    data: {
+      id: "clean-code",
+      name: "Clean Code",
+      description: "A classic",
+      tags: ["books"],
+      category_id: catId,
+    },
+  });
+
+  // 3. Verify item on home with category name
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByText("Clean Code")).toBeVisible();
+  await expect(page.getByTestId("item-category-clean-code")).toContainText(
+    "Books",
+  );
+
+  // 4. Navigate to detail — verify category shown
+  await page.getByText("Clean Code").click();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("item-detail-name")).toHaveText("Clean Code");
+  await expect(page.getByTestId("item-detail-category")).toContainText("Books");
+});

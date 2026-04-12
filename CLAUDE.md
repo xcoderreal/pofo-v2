@@ -27,7 +27,7 @@ Layer import rules:
 
 ## Adding a new resource (the pattern)
 
-**First resource in a fresh fork:** replace the `Item` scaffolding with your new domain (delete `domain/model.py`'s `Item`, `service/item_service.py`, `adapters/memory_repository.py`'s `MemoryItemRepository`, and their tests — then follow the steps below with your new name). The skeleton ships with `Item` as a reference template, not a required base class. Keeping it alongside your first real resource is the "abstraction for a hypothetical second use case" that `Things to avoid` warns against.
+**First resource in a fresh fork:** replace the `Item` + `Category` scaffolding with your new domain (delete domain models, services, adapters, and their tests — then follow the steps below with your new names). The skeleton ships with `Item` + `Category` as reference templates demonstrating single-entity and FK-related patterns, not required base classes.
 
 **Subsequent resources:** add alongside using the pattern below. Don't touch the existing ones.
 
@@ -43,7 +43,7 @@ To add a new resource (say, `User`), create files in this exact order:
 8. **`tests/integration/test_user_api.py`** — integration tests via `TestClient` + `dependency_overrides`
 9. **`tests/e2e/test_users.py`** — real-HTTP coverage for the new endpoints (see `docs/testing.md`)
 
-Mimic the existing `Item` / `ItemRepository` / `ItemService` / routes as your template. Keep the dependency injection pattern consistent: `get_repo()` returns the concrete adapter (cached with `@lru_cache` so in-memory state persists); `get_service()` takes `repo` via `Depends()`.
+Mimic the existing `Item` + `Category` / `ItemRepository` + `CategoryRepository` / `ItemService` + `CategoryService` / routes as your template. The skeleton ships both as a reference for single-entity and FK-related resources. Keep the dependency injection pattern consistent: repos are created in `lifespan` on `app.state`; `get_repo(request)` reads from `request.app.state`; `get_service()` takes `repo` via `Depends()`.
 
 **When you extend `Settings` with new env vars** (e.g. adding a persistence adapter, an external API key, a feature flag), **also add them to `apps/api/.env.sample`** with a comment explaining the choice. The sample file is the discovery surface for "what env vars does this app accept" — config.py alone isn't enough. Mirror the existing entries (`MYAPP_SECRET_KEY`, `MYAPP_PORT`) for the comment style.
 
@@ -102,6 +102,29 @@ These tiers are cross-cutting by nature — a single test often exercises router
 - `tests/fake_repository.py` and other shared helpers live at `tests/` root — they're fixtures, not tests
 - A single source module may split across multiple test files once tests exceed ~300 lines; the primary test file keeps the mirrored path, siblings are named descriptively (`test_item_service_edge_cases.py`)
 
+## Frontend file organization
+
+```
+app/            — expo-router pages (THIN: call hooks, render components)
+components/     — shared UI, extract when 2+ screens use same component
+hooks/          — useQuery/useMutation wrappers (one per resource) + useTheme
+lib/            — pure logic (api.ts, formatting). ZERO React imports.
+utils/          — theme.ts, constants
+tests/
+  unit/         — bun test on lib/
+  web/          — Playwright specs
+```
+
+**Pages are thin.** Each screen calls hooks for data, handles loading/error, renders components. No business logic, no direct `fetch`, no direct `lib/api.ts` imports — always go through `hooks/`.
+
+**`hooks/` = data hooks.** One file per resource: `useItems.ts`, `useCategories.ts`. Each exports `useXxx()` (query), `useCreateXxx()` (mutation with cache invalidation). Screens never call `fetchItems()` directly.
+
+**`lib/` has zero React imports.** Everything here is testable with `bun test`. If it needs `useX`, it's a hook.
+
+**Extract components when shared by 2+ screens.** Don't pre-extract. When a component exceeds 300 lines, promote to a folder: `ComponentName/index.tsx + types.ts + sub-components`.
+
+**Theme via `useTheme()`.** `utils/theme.ts` defines colors, spacing, fontSize, borderRadius. `hooks/useTheme.ts` provides it via React Context. Use `useTheme()` in components for consistent styling. Dark mode support is a future `ThemeProvider` value swap.
+
 ## Frontend — API types are generated from the backend
 
 `apps/mobile/lib/api-types.ts` is auto-generated from FastAPI's OpenAPI schema via `openapi-typescript`. **Do not edit it by hand.** When you change Pydantic response/request models in the backend, run `just gen-api-types` to regenerate and commit the result. `just verify` includes `check-api-types` which will fail if the committed types don't match what the backend would generate.
@@ -118,6 +141,8 @@ Recovery:
 - Tell the user to hard-reload the browser (Cmd+Shift+R on macOS)
 
 Only dig into the source if a fresh bundle still shows the wrong content.
+
+**`just dev` assumes `just install` has been run.** If you see 500 errors or MIME type refusals when starting the dev server, run `just install` first. This is especially common in fresh clones and new worktrees.
 
 ## Frontend — Expo SDK 54 pinned versions are load-bearing
 

@@ -145,6 +145,20 @@ Each test runs once per adapter; a single conformance failure in either implemen
 
 The smoke and e2e tiers spawn `uvicorn` as a subprocess via the `base_url` fixture in `apps/api/tests/conftest.py`. **The subprocess inherits the parent shell's environment** — so any env var you set before invoking `just test-smoke-local` (or `pytest tests/smoke/`) reaches the spawned uvicorn unchanged. That's why `MYAPP_REPOSITORY=sqlite just test-smoke-local` re-runs the entire smoke tier against the SQLite adapter with zero fixture changes.
 
+## Test parallelism by tier
+
+| Tier | Parallel? | Why |
+|---|---|---|
+| Unit (backend) | Yes | Each test gets a fresh `FakeRepository` via fixture |
+| Unit (frontend, `bun test`) | Yes | Pure functions, no shared state |
+| Integration (backend) | Yes | Each test gets a fresh repo via `dependency_overrides` fixture |
+| Smoke / E2E (backend) | Sequential within tier | Shared uvicorn process with persistent in-memory state |
+| Web (Playwright) | Sequential (`workers: 1`) | Shared backend process; each test resets via REST API in `beforeEach` |
+
+The Playwright `workers: 1` setting is in `playwright.config.ts`. Each test file's `beforeEach` resets the backend state via DELETE + POST calls, giving each test a known baseline. Tests are **independent** (any can run alone) but **sequential** (to avoid racing on the shared backend).
+
+<!-- TODO: frontend hook-level integration tests (renderHook + QueryClientProvider + mocked fetch) — add when hook count exceeds 10 and cache invalidation logic becomes complex -->
+
 ## Web tier — capabilities and how to extend
 
 The web tier (`apps/mobile/tests/web/`) uses [Playwright](https://playwright.dev) to load the exported Expo web bundle in headless Chromium and assert that nothing crashes during render. It's the only tier in the pyramid that catches **runtime UI errors** — bugs that pass `tsc --noEmit` and `expo export` but blow up the moment a real browser tries to render the page (CSS shim issues, hydration failures, missing globals, etc.).

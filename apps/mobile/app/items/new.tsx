@@ -48,6 +48,7 @@ export default function NewItemScreen() {
         value={name}
         onChangeText={setName}
         placeholder="Item name"
+        placeholderTextColor="#aaa"
       />
 
       <Text style={styles.label}>Description</Text>
@@ -57,6 +58,7 @@ export default function NewItemScreen() {
         value={description}
         onChangeText={setDescription}
         placeholder="Optional description"
+        placeholderTextColor="#aaa"
       />
 
       <Text style={styles.label}>Tags (comma-separated)</Text>
@@ -66,6 +68,7 @@ export default function NewItemScreen() {
         value={tags}
         onChangeText={setTags}
         placeholder="tag1, tag2"
+        placeholderTextColor="#aaa"
       />
 
       <Text style={styles.label}>Category</Text>

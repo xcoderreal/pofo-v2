@@ -307,3 +307,33 @@ This skeleton is designed to grow:
 - **New frontend screens**: Drop a `.tsx` file in `app/`. expo-router picks it up.
 - **Shared types**: If backend and frontend need shared type definitions, consider a `packages/shared` workspace with TypeScript types generated from Pydantic models.
 - **Additional apps**: Add to `apps/` — Turbo discovers them automatically via the workspace glob.
+
+## Current package choices
+
+The packages below implement the architecture described above. They're opinionated defaults, not load-bearing constraints — the layering rules and lifecycle patterns are what matter. A different frontend framework or a different Python web framework would work as long as the layer boundaries hold.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Testing                                                     │
+│  pytest (unit/integration/smoke/e2e) · ruff (lint+format)    │
+│  bun test (frontend unit) · Playwright (web tier, Chromium)  │
+├────────────────────────────┬─────────────────────────────────┤
+│  Frontend                  │  Backend                        │
+│  Expo SDK 54 + expo-router │  FastAPI + uvicorn              │
+│  React Native (UI)         │  Pydantic (request/response)    │
+│  TanStack Query (cache)    │  pydantic-settings (config)     │
+│  StyleSheet (styling)      │  Python @dataclass (domain)     │
+│  TypeScript (strict)       │  ABC (repository/source ports)  │
+├────────────────────────────┴─────────────────────────────────┤
+│  Codegen                                                     │
+│  FastAPI → OpenAPI JSON → openapi-typescript → TS types      │
+│  Single source of truth: Pydantic models                     │
+├──────────────────────────────────────────────────────────────┤
+│  Monorepo                                                    │
+│  Turborepo (task orchestration) · Bun (frontend packages)    │
+│  UV (Python packages) · just (workflow recipes)              │
+├──────────────────────────────────────────────────────────────┤
+│  Deploy                                                      │
+│  Vercel: serverless Python backend + static Expo web export  │
+└──────────────────────────────────────────────────────────────┘
+```
