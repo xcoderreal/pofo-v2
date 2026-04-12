@@ -24,6 +24,7 @@ Tracking the next round of skeleton-hardening experiments. Each row links to a s
 | 01 | **Persistence adapter (SQL/Supabase)** | "Extend with persistence" story actually works — Memory → SQL adapter swap is one-line wiring, the layering survives a real database, FakeRepository remains usable for tests | ✅ Fully closed (3 runs: v1 baseline → v2 round-1 fixes → v3 round-2 cross-link) | [`01_persistence_adapter.md`](01_persistence_adapter.md) |
 | 02 | **Auth middleware** | Layering accommodates cross-cutting concerns (request-scoped state, user context propagation) without leaking auth into the domain or service layer | ⏳ Not yet run | [`02_auth_middleware.md`](02_auth_middleware.md) |
 | 03 | **Multi-screen frontend** | "No state management library" rule survives at scale — local useState + refetch holds for 5+ screens with shared data, deep links, navigation state | ⏳ Not yet run | [`03_multi_screen_frontend.md`](03_multi_screen_frontend.md) |
+| 04 | **External API adapter** | Rule 4 of the layering doc holds for non-storage, non-CRUD adapters — a third-party price/weather fetcher is "just another adapter" and the test pyramid story generalizes from storage to network | ⏳ Not yet run | [`04_external_api_adapter.md`](04_external_api_adapter.md) |
 
 ## Status legend
 
@@ -53,8 +54,9 @@ The three v4 candidates target axes the previous experiments **didn't touch**:
 - **01 (Persistence)** — every prior experiment used `MemoryItemRepository`. The repository ABC has never actually had a non-memory adapter. The "swap one-line wiring" promise in `docs/philosophy.md` is **untested**. Most likely first thing real users hit.
 - **02 (Auth)** — every prior experiment was single-user / no auth. Cross-cutting concerns (request-scoped context, user identity, permission checks) haven't been validated against the layering. Common second thing real users hit.
 - **03 (Multi-screen frontend)** — every prior frontend was 1–3 screens with local state. Scaling beyond that with the "no state management library" constraint hasn't been validated. Common third thing real users hit.
+- **04 (External API adapter)** — every prior adapter was storage (memory, SQLite). The claim that "adapter = swappable edge" should generalize to non-storage I/O — a third-party price/weather fetcher is just another adapter under Rule 4 of the new layering doc. Bridges to pofo (which uses yfinance as an adapter).
 
-Run them in **order**: 01 first, because most apps need persistence before auth, and learnings from 01 (especially around the test pyramid + Playwright surviving a real DB) inform how to set up 02 and 03.
+Run them in **order** when sequential: 01 first (persistence is foundational), then 02 (auth depends on persistence being real), then 03 + 04 can run in parallel (frontend-scale and external-API-adapter are independent axes).
 
 ## Capturing findings
 
