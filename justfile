@@ -91,7 +91,7 @@ check-api-types: gen-api-types
 # Does NOT run backend e2e (use `just test-e2e-local` for that) or mobile
 # typecheck (use `just test` for the full CI-equivalent run).
 # ~35-45s cold because of Playwright's browser startup + bundle export.
-verify: test-unit test-integration test-smoke-local test-mobile-unit test-web-local check-api-types check
+verify: test-unit test-integration test-smoke-local test-mobile-typecheck test-mobile-unit test-web-local check-api-types check
 
 # ─── Build artifacts ─────────────────────────────────────────
 # `just build-web` = produce the static web bundle (matches Vercel's build).
