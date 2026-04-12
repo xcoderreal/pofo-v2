@@ -20,3 +20,6 @@ class ItemService:
     def create_item(self, item: Item) -> Item:
         self.repo.add(item)
         return item
+
+    def delete_item(self, item_id: str) -> bool:
+        return self.repo.delete(item_id)

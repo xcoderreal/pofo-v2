@@ -79,7 +79,7 @@ def test_create_item_full_payload(
     resp = http_client.post("/items", json=payload)
     assert resp.status_code == 201
     body = resp.json()
-    assert body == payload
+    assert body == {**payload, "category_id": None}
 
 
 def test_create_item_minimal_payload(
@@ -117,7 +117,7 @@ def test_create_then_get_roundtrip(
 
     resp = http_client.get(f"/items/{item_id}")
     assert resp.status_code == 200
-    assert resp.json() == payload
+    assert resp.json() == {**payload, "category_id": None}
 
 
 def test_create_then_filter_by_tag(

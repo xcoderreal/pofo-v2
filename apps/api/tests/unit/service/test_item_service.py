@@ -46,3 +46,20 @@ def test_create_item(service):
     service.create_item(new_item)
     assert len(service.list_items()) == 4
     assert service.get_item("4").name == "Delta"
+
+
+def test_create_item_with_category(service):
+    new_item = Item(id="5", name="Epsilon", category_id="cat-1")
+    service.create_item(new_item)
+    created = service.get_item("5")
+    assert created.category_id == "cat-1"
+
+
+def test_delete_item(service):
+    assert service.delete_item("1") is True
+    assert len(service.list_items()) == 2
+    assert service.get_item("1") is None
+
+
+def test_delete_item_not_found(service):
+    assert service.delete_item("nonexistent") is False

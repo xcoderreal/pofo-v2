@@ -1,63 +1,89 @@
-import { useEffect, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
-import { fetchItems, type Item } from "@/lib/api";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { ItemCard } from "@/components/ItemCard";
+import { useCategories } from "@/hooks/useCategories";
+import { useItems } from "@/hooks/useItems";
 
 export default function HomeScreen() {
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const { category_id } = useLocalSearchParams<{ category_id?: string }>();
+  const items = useItems(category_id ? { category_id } : undefined);
+  const categories = useCategories();
 
-  useEffect(() => {
-    fetchItems()
-      .then(setItems)
-      .finally(() => setLoading(false));
-  }, []);
+  const categoryMap = new Map(
+    (categories.data ?? []).map((c) => [c.id, c.name]),
+  );
 
-  if (loading) {
+  if (items.isLoading) {
     return (
       <View style={styles.center}>
-        <Text>Loading...</Text>
-      </View>
-    );
-  }
-
-  if (items.length === 0) {
-    return (
-      <View style={styles.center}>
-        <Text>No items yet. Add some via the API.</Text>
+        <Text testID="loading">Loading...</Text>
       </View>
     );
   }
 
   return (
-    <FlatList
-      data={items}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={styles.list}
-      renderItem={({ item }) => (
-        <View style={styles.card}>
-          <Text style={styles.name}>{item.name}</Text>
-          {item.description ? (
-            <Text style={styles.desc}>{item.description}</Text>
-          ) : null}
-          {item.tags.length > 0 && (
-            <Text style={styles.tags}>{item.tags.join(", ")}</Text>
-          )}
+    <View style={styles.container}>
+      <View style={styles.toolbar}>
+        <Pressable
+          testID="nav-new-item"
+          onPress={() => router.push("/items/new")}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>+ Item</Text>
+        </Pressable>
+        <Pressable
+          testID="nav-categories"
+          onPress={() => router.push("/categories")}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>Categories</Text>
+        </Pressable>
+      </View>
+
+      {(items.data ?? []).length === 0 ? (
+        <View style={styles.center}>
+          <Text testID="empty-state">No items yet. Add some via the API.</Text>
         </View>
+      ) : (
+        <FlatList
+          testID="items-list"
+          data={items.data}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <ItemCard
+              item={item}
+              categoryName={
+                item.category_id
+                  ? categoryMap.get(item.category_id)
+                  : undefined
+              }
+              onPress={() => router.push(`/items/${item.id}`)}
+            />
+          )}
+        />
       )}
-    />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  list: { padding: 16 },
-  card: {
-    backgroundColor: "#f9f9f9",
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 12,
+  toolbar: {
+    flexDirection: "row",
+    padding: 12,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
   },
-  name: { fontSize: 18, fontWeight: "600" },
-  desc: { fontSize: 14, color: "#666", marginTop: 4 },
-  tags: { fontSize: 12, color: "#999", marginTop: 4 },
+  button: {
+    backgroundColor: "#4a90d9",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  buttonText: { color: "#fff", fontWeight: "600" },
+  list: { padding: 16 },
 });

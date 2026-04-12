@@ -4,9 +4,13 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from myapp.adapters.memory_repository import MemoryItemRepository
-from myapp.domain.model import Item
-from myapp.domain.repository import ItemRepository
+from myapp.adapters.memory_repository import (
+    MemoryCategoryRepository,
+    MemoryItemRepository,
+)
+from myapp.domain.model import Category, Item
+from myapp.domain.repository import CategoryRepository, ItemRepository
+from myapp.service.category_service import CategoryService
 from myapp.service.item_service import ItemService
 
 
@@ -14,7 +18,8 @@ from myapp.service.item_service import ItemService
 async def lifespan(app: FastAPI):
     # Create long-lived resources at startup; clean up on shutdown.
     # Swap the adapter here when adding persistence (SQLite, Postgres, etc.).
-    app.state.repo = MemoryItemRepository()
+    app.state.item_repo = MemoryItemRepository()
+    app.state.category_repo = MemoryCategoryRepository()
     yield
 
 
@@ -28,12 +33,31 @@ app.add_middleware(
 )
 
 
+# ─── Item dependencies ────────────────────────────────────────
+
+
 def get_repo(request: Request) -> ItemRepository:
-    return request.app.state.repo
+    return request.app.state.item_repo
 
 
 def get_service(repo: ItemRepository = Depends(get_repo)) -> ItemService:
     return ItemService(repo=repo)
+
+
+# ─── Category dependencies ────────────────────────────────────
+
+
+def get_category_repo(request: Request) -> CategoryRepository:
+    return request.app.state.category_repo
+
+
+def get_category_service(
+    repo: CategoryRepository = Depends(get_category_repo),
+) -> CategoryService:
+    return CategoryService(repo=repo)
+
+
+# ─── Item schemas ─────────────────────────────────────────────
 
 
 class ItemResponse(BaseModel):
@@ -41,6 +65,7 @@ class ItemResponse(BaseModel):
     name: str
     description: str = ""
     tags: list[str] = []
+    category_id: str | None = None
 
 
 class CreateItemRequest(BaseModel):
@@ -48,23 +73,52 @@ class CreateItemRequest(BaseModel):
     name: str
     description: str = ""
     tags: list[str] = []
+    category_id: str | None = None
 
 
-def _to_response(item: Item) -> ItemResponse:
+# ─── Category schemas ─────────────────────────────────────────
+
+
+class CategoryResponse(BaseModel):
+    id: str
+    name: str
+
+
+class CreateCategoryRequest(BaseModel):
+    id: str
+    name: str
+
+
+# ─── Converters ───────────────────────────────────────────────
+
+
+def _to_item_response(item: Item) -> ItemResponse:
     return ItemResponse(
         id=item.id,
         name=item.name,
         description=item.description,
         tags=item.tags,
+        category_id=item.category_id,
     )
+
+
+def _to_category_response(category: Category) -> CategoryResponse:
+    return CategoryResponse(id=category.id, name=category.name)
+
+
+# ─── Item routes ──────────────────────────────────────────────
 
 
 @app.get("/items", response_model=list[ItemResponse])
 def list_items(
     tag: str | None = None,
+    category_id: str | None = None,
     service: ItemService = Depends(get_service),
 ):
-    return [_to_response(i) for i in service.list_items(tag=tag)]
+    items = service.list_items(tag=tag)
+    if category_id is not None:
+        items = [i for i in items if i.category_id == category_id]
+    return [_to_item_response(i) for i in items]
 
 
 @app.get("/items/{item_id}", response_model=ItemResponse)
@@ -75,7 +129,7 @@ def get_item(
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return _to_response(item)
+    return _to_item_response(item)
 
 
 @app.post("/items", response_model=ItemResponse, status_code=201)
@@ -88,9 +142,65 @@ def create_item(
         name=request.name,
         description=request.description,
         tags=request.tags,
+        category_id=request.category_id,
     )
     service.create_item(item)
-    return _to_response(item)
+    return _to_item_response(item)
+
+
+@app.delete("/items/{item_id}", status_code=204)
+def delete_item(
+    item_id: str,
+    service: ItemService = Depends(get_service),
+):
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    service.delete_item(item_id)
+
+
+# ─── Category routes ──────────────────────────────────────────
+
+
+@app.get("/categories", response_model=list[CategoryResponse])
+def list_categories(
+    service: CategoryService = Depends(get_category_service),
+):
+    return [_to_category_response(c) for c in service.list_categories()]
+
+
+@app.get("/categories/{category_id}", response_model=CategoryResponse)
+def get_category(
+    category_id: str,
+    service: CategoryService = Depends(get_category_service),
+):
+    category = service.get_category(category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return _to_category_response(category)
+
+
+@app.post("/categories", response_model=CategoryResponse, status_code=201)
+def create_category(
+    request: CreateCategoryRequest,
+    service: CategoryService = Depends(get_category_service),
+):
+    category = Category(id=request.id, name=request.name)
+    service.create_category(category)
+    return _to_category_response(category)
+
+
+@app.delete("/categories/{category_id}", status_code=204)
+def delete_category(
+    category_id: str,
+    service: CategoryService = Depends(get_category_service),
+):
+    deleted = service.delete_category(category_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+
+# ─── Health ───────────────────────────────────────────────────
 
 
 @app.get("/health")
