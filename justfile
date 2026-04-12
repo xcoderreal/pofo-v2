@@ -72,13 +72,26 @@ fmt-mobile-check:
 lint-mobile:
     cd apps/mobile && bunx expo lint
 
+# ─── API → Frontend contract ──────────────────────────────────
+# Generate TS types from the FastAPI OpenAPI schema. Committed output:
+#   apps/mobile/lib/api-schema.json  (raw OpenAPI JSON)
+#   apps/mobile/lib/api-types.ts     (generated TS interfaces)
+# `lib/api.ts` imports from `api-types.ts` — no manual interface definitions.
+gen-api-types:
+    cd apps/api && uv run python -c "import json; from myapp.entrypoints.api import app; print(json.dumps(app.openapi(), indent=2))" > ../mobile/lib/api-schema.json
+    cd apps/mobile && bunx openapi-typescript lib/api-schema.json -o lib/api-types.ts
+# Verify committed types match what the backend would generate.
+check-api-types: gen-api-types
+    git diff --exit-code apps/mobile/lib/api-schema.json apps/mobile/lib/api-types.ts
+
 # ─── Full health check ───────────────────────────────────────
 # `just verify` = pre-commit / PR gate.
-# Runs unit + integration + smoke-local + web (real browser runtime) + check.
+# Runs unit + integration + smoke-local + web (real browser runtime) +
+# api-types contract check + check.
 # Does NOT run backend e2e (use `just test-e2e-local` for that) or mobile
 # typecheck (use `just test` for the full CI-equivalent run).
 # ~35-45s cold because of Playwright's browser startup + bundle export.
-verify: test-unit test-integration test-smoke-local test-mobile-unit test-web-local check
+verify: test-unit test-integration test-smoke-local test-mobile-unit test-web-local check-api-types check
 
 # ─── Build artifacts ─────────────────────────────────────────
 # `just build-web` = produce the static web bundle (matches Vercel's build).

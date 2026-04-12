@@ -101,6 +101,12 @@ These tiers are cross-cutting by nature — a single test often exercises router
 - `tests/fake_repository.py` and other shared helpers live at `tests/` root — they're fixtures, not tests
 - A single source module may split across multiple test files once tests exceed ~300 lines; the primary test file keeps the mirrored path, siblings are named descriptively (`test_item_service_edge_cases.py`)
 
+## Frontend — API types are generated from the backend
+
+`apps/mobile/lib/api-types.ts` is auto-generated from FastAPI's OpenAPI schema via `openapi-typescript`. **Do not edit it by hand.** When you change Pydantic response/request models in the backend, run `just gen-api-types` to regenerate and commit the result. `just verify` includes `check-api-types` which will fail if the committed types don't match what the backend would generate.
+
+`lib/api.ts` imports its types from `api-types.ts` — no manual interface definitions. This prevents backend/frontend type drift (the class of bug where the backend adds a field and the frontend silently ignores it).
+
 ## Frontend — stale Metro bundles are a common trap
 
 If the user reports that UI changes aren't showing up, or that the page shows content that doesn't match the source (wrong header, wrong empty state, wrong text), **assume a stale Metro bundle before debugging the code**. Expo caches aggressively and a hot reload isn't always enough.
