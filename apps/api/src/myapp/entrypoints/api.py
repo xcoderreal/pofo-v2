@@ -1,6 +1,6 @@
-from functools import lru_cache
+from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -9,7 +9,16 @@ from myapp.domain.model import Item
 from myapp.domain.repository import ItemRepository
 from myapp.service.item_service import ItemService
 
-app = FastAPI(title="My App", description="API backend")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create long-lived resources at startup; clean up on shutdown.
+    # Swap the adapter here when adding persistence (SQLite, Postgres, etc.).
+    app.state.repo = MemoryItemRepository()
+    yield
+
+
+app = FastAPI(title="My App", description="API backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,11 +28,8 @@ app.add_middleware(
 )
 
 
-@lru_cache(maxsize=1)
-def get_repo() -> ItemRepository:
-    # Cached so the in-memory store persists across requests in dev.
-    # Swap for a persistent adapter (SQLite, Postgres, etc.) in production.
-    return MemoryItemRepository()
+def get_repo(request: Request) -> ItemRepository:
+    return request.app.state.repo
 
 
 def get_service(repo: ItemRepository = Depends(get_repo)) -> ItemService:

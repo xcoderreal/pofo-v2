@@ -36,14 +36,47 @@ The backend follows the architecture from "Architecture Patterns with Python" (P
 
 ### Layer rules
 
-| Layer | Imports from | Never imports |
-|-------|-------------|---------------|
-| `domain/` | stdlib only | service, adapters, entrypoints |
-| `service/` | domain | adapters, entrypoints |
-| `adapters/` | domain | service, entrypoints |
-| `entrypoints/` | domain, service, adapters | — |
+```
+  ┌─────────────────────────────────────────────────────────┐
+  │  entrypoints/                                           │
+  │                                                         │
+  │  May import: everything below + fastapi, pydantic,      │
+  │              uvicorn, any web-framework dep              │
+  │                                                         │
+  │  The ONLY layer that knows the web framework.           │
+  │  Auth (get_current_user) lives here.                    │
+  └────────────────────────┬────────────────────────────────┘
+                           │
+  ┌────────────────────────▼────────────────────────────────┐
+  │  service/                                               │
+  │                                                         │
+  │  May import: domain/ + stdlib                           │
+  │                                                         │
+  │  Framework-free. Auth-free. Takes owner_id: str,        │
+  │  never Request or User.                                 │
+  └────────────────────────┬────────────────────────────────┘
+                           │
+  ┌────────────────────────▼────────────────────────────────┐
+  │  domain/                                                │
+  │                                                         │
+  │  May import: stdlib only                                │
+  │                                                         │
+  │  Pure dataclasses. ABCs (repository.py, sources).       │
+  │  No framework, no I/O, no third-party deps.             │
+  └────────────────────────▲────────────────────────────────┘
+                           │
+  ┌────────────────────────┴────────────────────────────────┐
+  │  adapters/                                              │
+  │                                                         │
+  │  May import: domain/ + stdlib + adapter-specific deps   │
+  │              (httpx, sqlite3, supabase-py, redis-py…)   │
+  │                                                         │
+  │  Each adapter owns its runtime deps. Those deps must    │
+  │  NOT leak into domain/ or service/.                     │
+  └─────────────────────────────────────────────────────────┘
+```
 
-The dependency arrow always points inward: entrypoints → service → domain ← adapters.
+The dependency arrow always points inward: entrypoints → service → domain ← adapters. Adapter-specific runtime dependencies (e.g. `httpx` for a price-feed adapter, `sqlite3` for a database adapter) are allowed in `adapters/` and must not leak upward into `service/` or `domain/`.
 
 ### File structure
 
@@ -113,12 +146,44 @@ The middle of the stack is written once and never rewritten when you swap a back
 
 **Why this is stack-independent in practice.** Every backend on the swappable-edge list has a natural implementation for the 90% ABC shape: relational backends use `WHERE owner_id = ?`, key-value backends use `owner_id` as a partition key, document stores use it as a filter. The skeleton doesn't pretend every backend is equally ergonomic — it admits it's optimized for relational-ish CRUD (which is 90%+ of real apps) and lets the 10% customize locally.
 
+### Resource lifecycle
+
+The layering diagram above shows *spatial* structure (which layer imports what). This section covers *temporal* structure — when are resources born, when do they die, who holds them.
+
+```
+         app startup (lifespan __aenter__)
+               │
+               ▼
+    ┌─ app.state.repo = MemoryItemRepository()
+    ├─ (future: app.state.price_source = CoinbasePriceSource())
+    ├─ (future: db pool, redis client, etc.)
+    │
+    │     request cycle
+    │     ┌────────────────────────────────┐
+    │     │ get_repo(request: Request) →   │
+    │     │   request.app.state.repo       │
+    │     │                                │
+    │     │ get_service(repo=Depends(…)) → │
+    │     │   ItemService(repo=repo)       │
+    │     └────────────────────────────────┘
+    │
+    ▼
+  app shutdown (lifespan __aexit__)
+    close httpx clients, db pools, etc.
+```
+
+**Rule: `lifespan` creates all long-lived resources. `app.state` holds them. `Depends` functions pull from `app.state` via `Request`.** No `@lru_cache`, no module-level singletons, no globals. This makes the lifecycle explicit: "when does the repo get created?" is answered by "at app startup," not "the first request that triggers a cached call."
+
+The `lifespan` hook also gives you a **teardown** path — real adapters (SQLite connections, Postgres pools, `httpx.Client` instances) want to close on shutdown. `@lru_cache` has no teardown; `lifespan.__aexit__` does.
+
+**Tests are not affected.** Integration tests use `app.dependency_overrides[get_repo] = lambda: fake_repo`, which intercepts at the `Depends()` level regardless of where `get_repo` reads from. The `lambda: fake_repo` override takes no arguments and returns the fake — FastAPI's DI system is fine with that.
+
 ### Adding a new adapter
 
 To add a database-backed repository (e.g., SQLite):
 
 1. Create `adapters/sqlite_repository.py` implementing `ItemRepository`
-2. Change `get_repo()` in `entrypoints/api.py` to dispatch on a `Settings` field (e.g. `repository: str = "memory"`) so the adapter is selectable via env var, not code change
+2. Update the `lifespan` hook in `entrypoints/api.py` to construct the right adapter based on a `Settings` field (e.g. `repository: str = "memory"`) so the adapter is selectable via env var, not code change
 3. Add the new env vars to `apps/api/.env.sample` so they're discoverable (CLAUDE.md spells this out — every new `Settings` field needs a corresponding documented entry)
 4. Add unit tests under `apps/api/tests/unit/adapters/` using `tmp_path` (or equivalent) for isolation per test. **See [`docs/testing.md` § "Where adapter conformance lives"](testing.md#where-adapter-conformance-lives)** for the parametrize-over-adapters pattern that lets one test file cover both `Memory` and your new adapter.
 5. The smoke and e2e tiers will exercise the new adapter automatically when the env var is set — no test rewrites required. The smoke/e2e fixtures spawn `uvicorn` as a subprocess that **inherits the parent shell's environment**, so `MYAPP_REPOSITORY=sqlite just test-smoke-local` swaps the adapter for that run with no fixture changes.
@@ -127,6 +192,31 @@ To add a database-backed repository (e.g., SQLite):
 **Threading note for sync I/O adapters.** FastAPI runs sync route handlers in a threadpool. Most database clients (`sqlite3`, `psycopg`, `redis-py`, etc.) are not safe to share across threads without specific configuration (e.g. `sqlite3` requires `check_same_thread=False`, and even then a single connection is a contention point). For low-traffic services, the simplest correct pattern is **a fresh client per call** inside the repository — no shared state, no thread-safety concerns. If you need pooling later, that's a separate decision driven by load, not a default. Document the choice in the adapter's class docstring so the next reader doesn't have to re-derive it.
 
 **Why this still doesn't violate "no abstraction for hypothetical needs."** Each new adapter is a one-file addition implementing an existing interface. You don't add the abstraction speculatively — you add the adapter when you need it, and the existing `ItemRepository` ABC absorbs it without any wider change.
+
+### If the adapter is a network client (not storage)
+
+Not all adapters are repositories. A price-feed fetcher, a geocoding service, or a translation API are all adapters — they implement a `domain/` ABC and live in `adapters/` — but they're **read-only external sources**, not read-write storage.
+
+**Capability naming.** Storage ABCs are called **repositories** (`domain/repository.py`). Read-only external ABCs are called **sources** (`domain/price_source.py`, `domain/weather_source.py`, etc.). Name the ABC after the *capability* (`PriceSource`), not the vendor (`CoinbaseClient`). The vendor name appears only in the concrete adapter filename (`adapters/coinbase_price_source.py`). One file per capability ABC in `domain/`; consider a `domain/ports/` directory if you accumulate 3+.
+
+```python
+# domain/price_source.py — read-only, external
+class PriceSource(ABC):
+    @abstractmethod
+    def get_price(self, ticker: str) -> Price | None: ...
+
+# adapters/coinbase_price_source.py — concrete
+class CoinbasePriceSource(PriceSource):
+    def __init__(self, client=None, ttl=60.0, now_fn=time.monotonic):
+        self._client = client or httpx.Client(...)
+        ...
+```
+
+**Caching lives in the adapter, not the service.** The service calls `price_source.get_price(ticker)` and trusts it to be fast enough. A `FakePriceSource` in tests doesn't cache.
+
+**Testability via constructor injection, not mocks.** Make the `httpx.Client` and a clock function injectable so unit tests can pass `httpx.Client(transport=httpx.MockTransport(handler))` and a fake `now_fn`. This is the same "fakes, not mocks" philosophy — `MockTransport` is a first-class `httpx` feature, not `unittest.mock`.
+
+**Resource lifecycle.** Create the adapter in the `lifespan` hook (`app.state.price_source = CoinbasePriceSource()`), close its client in `__aexit__`. Wire via `Depends` the same way as `get_repo`.
 
 ### Adding a new service method
 

@@ -18,10 +18,12 @@ Layer import rules:
 |---|---|---|
 | `domain/` | stdlib only | service, adapters, entrypoints, fastapi, pydantic, sqlalchemy, etc. |
 | `service/` | `domain/` | adapters, entrypoints |
-| `adapters/` | `domain/` | service, entrypoints |
-| `entrypoints/` | all inner layers | — |
+| `adapters/` | `domain/` + adapter-specific runtime deps (`httpx`, `sqlite3`, etc.) | service, entrypoints |
+| `entrypoints/` | all inner layers + `fastapi`, `pydantic`, `uvicorn` | — |
 
 **The domain must stay framework-free.** No FastAPI, no Pydantic models, no SQLAlchemy. Plain `@dataclass` only. If you find yourself wanting to put a Pydantic model in `domain/`, it belongs in `entrypoints/` as a request/response schema instead.
+
+**Resource lifecycle: `lifespan` + `app.state`, not `@lru_cache`.** Long-lived resources (repositories, external API adapters, DB pools) are created in the `lifespan` hook, held on `app.state`, and pulled into route handlers via `Depends(get_repo)` where `get_repo(request: Request)` reads from `request.app.state.repo`. See [`docs/architecture.md` § "Resource lifecycle"](docs/architecture.md#resource-lifecycle) for the full diagram.
 
 ## Adding a new resource (the pattern)
 
