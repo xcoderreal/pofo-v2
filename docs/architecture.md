@@ -61,6 +61,58 @@ apps/api/src/myapp/
     └── api.py             # FastAPI routes + DI wiring
 ```
 
+### Layering: invariant core, swappable edges
+
+The middle of the stack is written once and never rewritten when you swap a backend or an auth scheme. The edges are where stack choices live.
+
+```
+  ┌───────────────────────────────────────────────────────────────┐
+  │                     SWAPPABLE EDGE (top)                      │
+  │                                                               │
+  │   identity source  →  get_current_user()  →  domain User      │
+  │   · hand-rolled JWT · pyjwt · Supabase JWKS                   │
+  │   · session cookie  · reverse-proxy header  · dev stub        │
+  └──────────────────────────┬────────────────────────────────────┘
+                             │ owner_id: str
+  ╔══════════════════════════▼════════════════════════════════════╗
+  ║                     INVARIANT CORE                            ║
+  ║                                                               ║
+  ║   entrypoints/   thin route handlers                          ║
+  ║        │                                                      ║
+  ║   service/      takes owner_id: str, returns domain objects   ║
+  ║        │                                                      ║
+  ║   domain/       @dataclass Item, User; ItemRepository (ABC)   ║
+  ║        ▲                                                      ║
+  ╚════════╪══════════════════════════════════════════════════════╝
+           │ implements
+  ┌────────┴──────────────────────────────────────────────────────┐
+  │                   SWAPPABLE EDGE (bottom)                     │
+  │                                                               │
+  │   storage backend  →  <Name>ItemRepository                    │
+  │   · Memory · SQLite · Postgres · Supabase · Redis · Dynamo    │
+  └───────────────────────────────────────────────────────────────┘
+```
+
+**Four rules keep the core invariant:**
+
+1. **Auth lives in `entrypoints/`.** `get_current_user` is the *only* place that parses identity. It returns a domain `User`. Nothing downstream imports from it — the service and domain layers never learn whether auth is JWT, cookies, or a proxy header.
+
+2. **Services take `owner_id: str`, never `User` or `Request`.** This is what keeps the service layer framework-free *and* auth-scheme-free. A service signature is identical whether you're running against memory, SQLite, or Supabase.
+
+3. **Ownership is a repository concern, not a service concern.** Every read/write in the repository ABC that touches owned data takes `owner_id`. Services never filter post-hoc. This is what makes an RLS migration free: a `SupabaseItemRepository` can pass `owner_id` to `.eq()` *or* rely on Postgres row-level security and ignore the parameter — the service doesn't know or care.
+
+4. **The ABC fits the 90% case. The 10% case customizes its adapter.** Don't design the repository interface for every backend and every feature you might one day need. Design it for the common CRUD shape (get, list, add, delete) and let edge cases add methods to their *specific* adapter, wired through a single service method — not through the ABC.
+
+**The rule of three for growing the ABC.** First caller with an edge-case need (pagination, batch insert, upsert, full-text search, …) solves it as a one-off on their adapter. Second caller copies the pattern. Third caller promotes it into the ABC. This is the same heuristic as "three similar lines beats a premature abstraction" — applied to the repository contract.
+
+**What this means for the usual suspects:**
+
+- **Pagination** — not in the ABC. Defer until a `list_*` call is actually slow or actually exceeds a reasonable response size. When it shows up, the first caller picks a style (offset vs cursor) that fits their access pattern. Preemptive pagination designs almost always get rewritten.
+- **Transactions** — not in the ABC. The skeleton trusts per-method atomicity (which every real DB provides on a single statement). If a concrete multi-step atomic requirement appears ("create order + decrement inventory"), introduce Cosmic Python's Unit of Work pattern at the **service** layer — it wraps existing repositories without changing their interfaces.
+- **Batch ops** — not in the ABC by default. If a caller needs to insert N items efficiently, they either loop (fine up to hundreds) or add `add_many` to their specific adapter. Don't conflate batch ("do N things efficiently") with transaction ("do N things atomically") — they're different problems with different solutions.
+
+**Why this is stack-independent in practice.** Every backend on the swappable-edge list has a natural implementation for the 90% ABC shape: relational backends use `WHERE owner_id = ?`, key-value backends use `owner_id` as a partition key, document stores use it as a filter. The skeleton doesn't pretend every backend is equally ergonomic — it admits it's optimized for relational-ish CRUD (which is 90%+ of real apps) and lets the 10% customize locally.
+
 ### Adding a new adapter
 
 To add a database-backed repository (e.g., SQLite):

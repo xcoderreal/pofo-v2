@@ -52,6 +52,7 @@ Mimic the existing `Item` / `ItemRepository` / `ItemService` / routes as your te
 - **Use `FakeRepository`, not mocks.** No `unittest.mock`, no `@patch`. Fake adapters implement the same ABC as real ones and behave like a real store. This catches bugs mocks hide (interface drift, ordering assumptions, etc.).
 - **Integration tests use fixtures, not module-level overrides.** See `tests/integration/test_api.py` — the `client` fixture installs a fresh `FakeItemRepository` for each test so state doesn't leak across tests but *does* persist across requests within a test.
 - **Every new endpoint gets a round-trip test.** POST → GET → see it. This is what `dependency_overrides` + fixtures enable.
+- **Every new screen or user flow gets a Playwright web test.** When you add a new screen (`apps/mobile/app/*.tsx`), a new user flow (login, signup, add-item, multi-step form), or a new UI state (auth-required, empty, error), extend `apps/mobile/tests/web/` with at least one happy-path spec that exercises it in a real browser. The existing `smoke.spec.ts` only asserts "the page loads without `pageerror`" — it will *not* catch a broken login button, a stale items list, or a form that silently drops its submit. Runtime UI regressions are invisible to `tsc` and `expo export`; Playwright is the only tier that catches them. See [`docs/testing.md`](docs/testing.md) § "Web tier — capabilities and how to extend" for the full Playwright API surface.
 
 ### Which tier does a new test belong in?
 
