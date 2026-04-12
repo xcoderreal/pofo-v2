@@ -130,9 +130,63 @@ If the agent had to fight the skeleton in any of these places, it's a real gap:
 
 **Status:** ✅ v1 passed cleanly; v2 re-run pending to validate the doc fixes are discoverable.
 
-### v2 — pending
+### v2 — 2026-04-11 (against round-1 docs)
 
-> **Run on:** _date_
-> **Final commit:** _sha_
-> **Delta from v1:** _did the agent reference the new architecture.md note? did the new testing.md callout get used? did the agent's RETRO §6 shrink?_
-> **Status:** _⏳ pending_
+**Verify status:** ✅ green on both adapters.
+
+**Delta from v1 — what the round-1 fixes achieved:**
+- ✅ `.env.sample` updated (v1 didn't; CLAUDE.md note worked)
+- ✅ Threading note cited in adapter docstring (v1 re-derived it; architecture.md note worked)
+- ✅ RETRO §6 dropped 3 of v1's 4 items (env.sample, .gitignore, testing.md callout — all now in docs)
+- ✅ LOG.md shrunk from 13 to 8 entries
+- ❌ **`docs/testing.md` still NOT read** — the new "Where adapter conformance lives" section existed but was unreachable from architecture.md. Both agents (v1 and v2) skipped testing.md entirely and re-derived the parametrized test pattern independently.
+
+**Round-2 fixes landed in response:**
+- Cross-link from `docs/architecture.md` step 4 → `docs/testing.md § "Where adapter conformance lives"`
+- Worked example for parametrized adapter tests in testing.md
+- Subprocess env-var inheritance documented in both files
+- `data_dir` dead-code field removed from Settings
+- `apps/api/tests/unit/adapters/__init__.py` pre-created
+
+**Status:** ✅ Round-1 partially worked; round-2 needed to close the testing.md discoverability gap.
+
+### v3 — 2026-04-11 (against round-2 docs)
+
+**Verify status:** ✅ green; 21 unit + 15 integration + 4 smoke + 16 mobile-unit + 1 web + lint + format.
+
+**The decisive evidence:** v3's RETRO §1 says verbatim:
+
+> "**`docs/testing.md`** — third, specifically § "Where adapter conformance lives". This is the section that told me to put conformance tests in the unit tier parametrized over adapters... I only found the section because architecture.md § "Adding a new adapter" step 4 links to it."
+
+**This is the cleanest possible validation of the doc-discoverability hypothesis: cross-linking from a doc the agent IS reading turns an invisible section into a load-bearing one.**
+
+**Delta from v2 — what round-2 achieved:**
+- ✅ `docs/testing.md` finally read (cross-link from architecture.md → testing.md anchor)
+- ✅ Parametrized adapter test pattern followed verbatim from the worked example (v3's `test_item_repositories.py` matches the documented if/elif fixture)
+- ✅ `tests/unit/adapters/` directory existed (pre-created in round-2)
+- ✅ `data_dir` stayed gone
+- ✅ `.env.sample` comments cite the round-1 docs (env-var inheritance, `.gitignore` patterns) — agent quoted documentation back
+
+**v3 RETRO §6 (4 new items, all polish — no discovery failures):**
+1. Document encoding choices for composite types (lists, dicts, timestamps) in architecture.md
+2. CLAUDE.md could cross-link to testing.md too (belt-and-suspenders; already solved)
+3. env-var swap example should ship pre-implemented (would mean shipping SQLite adapter — contradicts adapter-free skeleton stance)
+4. `@lru_cache(maxsize=1)` on `get_repo` means Settings is read once per process — worth flagging
+
+**Convergence signal:** v1 surfaced major discoverability gaps. v2 surfaced medium gaps. v3 surfaced polish. The severity dropped while the count stayed constant — diminishing returns are visible. **Not landing round-3 fixes** because the marginal value is below the cost of further iteration, and item 3 contradicts skeleton philosophy.
+
+**Status:** ✅ **Fully closed.** Three independent runs converged on the same shape with each round of doc fixes applied. The persistence story is validated and reproducible. Moving to experiment 02 (auth).
+
+### Three-run summary
+
+| Metric | v1 | v2 | v3 |
+|---|---|---|---|
+| `just verify` green | ✅ | ✅ | ✅ |
+| Adapter file lines | 65 | 78 | 94 |
+| Approach to tags | JSON | JSON | newline-delimited |
+| New unit test file shape | Separate `test_sqlite_repository.py`, 8 tests | Parametrized `test_item_repositories.py`, 8 functions, 15 cases | Parametrized `test_item_repositories.py`, 9 functions, 16 cases |
+| Read `docs/testing.md` | ❌ | ❌ | ✅ |
+| Cited threading note in docstring | ❌ (re-derived) | ✅ | ✅ |
+| Updated `.env.sample` | ❌ | ✅ | ✅ (with doc citations) |
+| RETRO §6 severity | Major gaps | Medium gaps | Polish only |
+| LOG.md entries | 13 | 8 | 16 |

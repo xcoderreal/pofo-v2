@@ -21,7 +21,7 @@ Tracking the next round of skeleton-hardening experiments. Each row links to a s
 
 | # | Experiment | Tests | Status | File |
 |---|---|---|---|---|
-| 01 | **Persistence adapter (SQL/Supabase)** | "Extend with persistence" story actually works — Memory → SQL adapter swap is one-line wiring, the layering survives a real database, FakeRepository remains usable for tests | ✅ v1 passed (2026-04-11) — surfaced docs gaps now landed; v2 re-run pending to validate fixes | [`01_persistence_adapter.md`](01_persistence_adapter.md) |
+| 01 | **Persistence adapter (SQL/Supabase)** | "Extend with persistence" story actually works — Memory → SQL adapter swap is one-line wiring, the layering survives a real database, FakeRepository remains usable for tests | ✅ Fully closed (3 runs: v1 baseline → v2 round-1 fixes → v3 round-2 cross-link) | [`01_persistence_adapter.md`](01_persistence_adapter.md) |
 | 02 | **Auth middleware** | Layering accommodates cross-cutting concerns (request-scoped state, user context propagation) without leaking auth into the domain or service layer | ⏳ Not yet run | [`02_auth_middleware.md`](02_auth_middleware.md) |
 | 03 | **Multi-screen frontend** | "No state management library" rule survives at scale — local useState + refetch holds for 5+ screens with shared data, deep links, navigation state | ⏳ Not yet run | [`03_multi_screen_frontend.md`](03_multi_screen_frontend.md) |
 
