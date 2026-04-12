@@ -8,75 +8,54 @@ round-trip flows (POST -> GET -> list) work as they would against a real store.
 import pytest
 from fastapi.testclient import TestClient
 
-from myapp.domain.model import Item
-from myapp.entrypoints.api import app, get_category_repo, get_repo
-from tests.fake_repository import FakeCategoryRepository, FakeItemRepository
+from myapp.entrypoints.api import (
+    app,
+    get_account_repo,
+    get_instrument_repo,
+    get_price_source,
+    get_transaction_repo,
+)
+from tests.fake_price_source import FakePriceSource
+from tests.fake_repository import (
+    FakeAccountRepository,
+    FakeInstrumentRepository,
+    FakeTransactionRepository,
+)
 
 
 @pytest.fixture
-def repo() -> FakeItemRepository:
-    return FakeItemRepository()
+def account_repo():
+    return FakeAccountRepository()
 
 
 @pytest.fixture
-def category_repo() -> FakeCategoryRepository:
-    return FakeCategoryRepository()
+def instrument_repo():
+    return FakeInstrumentRepository()
 
 
 @pytest.fixture
-def client(
-    repo: FakeItemRepository, category_repo: FakeCategoryRepository
-) -> TestClient:
-    # Return the same repos for every request in this test.
-    app.dependency_overrides[get_repo] = lambda: repo
-    app.dependency_overrides[get_category_repo] = lambda: category_repo
+def transaction_repo():
+    return FakeTransactionRepository()
+
+
+@pytest.fixture
+def price_source():
+    return FakePriceSource({"AAPL": 150.0, "GOOGL": 2800.0})
+
+
+@pytest.fixture
+def client(account_repo, instrument_repo, transaction_repo, price_source):
+    app.dependency_overrides[get_account_repo] = lambda: account_repo
+    app.dependency_overrides[get_instrument_repo] = lambda: instrument_repo
+    app.dependency_overrides[get_transaction_repo] = lambda: transaction_repo
+    app.dependency_overrides[get_price_source] = lambda: price_source
     try:
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
 
 
-@pytest.fixture
-def seeded_client(
-    repo: FakeItemRepository, category_repo: FakeCategoryRepository
-) -> TestClient:
-    for item in [
-        Item(id="r1", name="Alpha", tags=["a"]),
-        Item(id="r2", name="Beta", tags=["b"]),
-    ]:
-        repo.add(item)
-    app.dependency_overrides[get_repo] = lambda: repo
-    app.dependency_overrides[get_category_repo] = lambda: category_repo
-    try:
-        yield TestClient(app)
-    finally:
-        app.dependency_overrides.clear()
-
-
-# ─── Read-only endpoints ───────────────────────────────────────────
-
-
-def test_list_items_empty(client: TestClient):
-    resp = client.get("/items")
-    assert resp.status_code == 200
-    assert resp.json() == []
-
-
-def test_list_items_seeded(seeded_client: TestClient):
-    resp = seeded_client.get("/items")
-    assert resp.status_code == 200
-    assert len(resp.json()) == 2
-
-
-def test_get_item(seeded_client: TestClient):
-    resp = seeded_client.get("/items/r1")
-    assert resp.status_code == 200
-    assert resp.json()["name"] == "Alpha"
-
-
-def test_get_item_not_found(client: TestClient):
-    resp = client.get("/items/nonexistent")
-    assert resp.status_code == 404
+# ─── Health ───────────────────────────────────────────────────
 
 
 def test_health(client: TestClient):
@@ -85,205 +64,354 @@ def test_health(client: TestClient):
     assert resp.json() == {"status": "ok"}
 
 
-# ─── Item write endpoints ─────────────────────────────────────────
+# ─── Account endpoints ───────────────────────────────────────
 
 
-def test_create_item(client: TestClient):
-    payload = {"id": "r3", "name": "Gamma", "tags": ["c"]}
-    resp = client.post("/items", json=payload)
+def test_list_accounts_empty(client: TestClient):
+    resp = client.get("/accounts")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_create_account(client: TestClient):
+    payload = {"id": "schwab", "name": "Schwab Brokerage", "account_type": "brokerage"}
+    resp = client.post("/accounts", json=payload)
     assert resp.status_code == 201
-    body = resp.json()
-    assert body["id"] == "r3"
-    assert body["name"] == "Gamma"
-    assert body["tags"] == ["c"]
-    assert body["description"] == ""
-    assert body["category_id"] is None
+    assert resp.json()["id"] == "schwab"
+    assert resp.json()["account_type"] == "brokerage"
 
 
-def test_create_item_minimal_payload(client: TestClient):
-    """Only id and name are required; description, tags, and category_id default."""
-    resp = client.post("/items", json={"id": "x", "name": "X"})
+def test_get_account(client: TestClient):
+    client.post("/accounts", json={"id": "a1", "name": "Test", "account_type": "cash"})
+    resp = client.get("/accounts/a1")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Test"
+
+
+def test_get_account_not_found(client: TestClient):
+    assert client.get("/accounts/nope").status_code == 404
+
+
+def test_delete_account(client: TestClient):
+    client.post("/accounts", json={"id": "a1", "name": "Test"})
+    assert client.delete("/accounts/a1").status_code == 204
+    assert client.get("/accounts/a1").status_code == 404
+
+
+# ─── Instrument endpoints ────────────────────────────────────
+
+
+def test_list_instruments_empty(client: TestClient):
+    resp = client.get("/instruments")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_create_instrument(client: TestClient):
+    payload = {"id": "aapl", "ticker": "AAPL", "name": "Apple Inc."}
+    resp = client.post("/instruments", json=payload)
     assert resp.status_code == 201
-    assert resp.json() == {
-        "id": "x",
-        "name": "X",
-        "description": "",
-        "tags": [],
-        "category_id": None,
+    assert resp.json()["ticker"] == "AAPL"
+
+
+def test_get_instrument_not_found(client: TestClient):
+    assert client.get("/instruments/nope").status_code == 404
+
+
+def test_delete_instrument(client: TestClient):
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
+    assert client.delete("/instruments/aapl").status_code == 204
+    assert client.get("/instruments/aapl").status_code == 404
+
+
+# ─── Transaction endpoints ───────────────────────────────────
+
+
+def test_list_transactions_empty(client: TestClient):
+    assert client.get("/transactions").json() == []
+
+
+def test_create_transaction(client: TestClient):
+    # Set up account + instrument first
+    client.post("/accounts", json={"id": "a1", "name": "Schwab"})
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
+    payload = {
+        "id": "t1",
+        "account_id": "a1",
+        "instrument_id": "aapl",
+        "type": "buy",
+        "quantity": 10,
+        "price": 150.0,
+        "date": "2024-01-15",
     }
+    resp = client.post("/transactions", json=payload)
+    assert resp.status_code == 201
+    assert resp.json()["id"] == "t1"
+    assert resp.json()["type"] == "buy"
 
 
-def test_create_item_missing_required_field(client: TestClient):
-    resp = client.post("/items", json={"name": "no-id"})
-    assert resp.status_code == 422
-
-
-def test_create_item_invalid_json(client: TestClient):
-    """Reproduces the curl-with-literal-newline failure mode."""
-    resp = client.post(
-        "/items",
-        content=b'{"id":"bad","name":"raw\nnewline"}',
-        headers={"Content-Type": "application/json"},
+def test_list_transactions_filter_by_account(client: TestClient):
+    client.post("/accounts", json={"id": "a1", "name": "Schwab"})
+    client.post("/accounts", json={"id": "a2", "name": "Fidelity"})
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
+    client.post(
+        "/transactions",
+        json={
+            "id": "t1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "buy",
+            "quantity": 10,
+            "price": 150,
+            "date": "2024-01-01",
+        },
     )
-    assert resp.status_code == 422
-    assert resp.json()["detail"][0]["type"] == "json_invalid"
+    client.post(
+        "/transactions",
+        json={
+            "id": "t2",
+            "account_id": "a2",
+            "instrument_id": "aapl",
+            "type": "buy",
+            "quantity": 5,
+            "price": 160,
+            "date": "2024-02-01",
+        },
+    )
+    resp = client.get("/transactions", params={"account_id": "a1"})
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["account_id"] == "a1"
 
 
-def test_create_item_with_category(client: TestClient):
-    # Create a category first
-    client.post("/categories", json={"id": "cat1", "name": "Electronics"})
-    payload = {"id": "r4", "name": "Laptop", "category_id": "cat1"}
-    resp = client.post("/items", json=payload)
-    assert resp.status_code == 201
-    assert resp.json()["category_id"] == "cat1"
+def test_sell_validation_400(client: TestClient):
+    """Selling more than available returns 400."""
+    client.post("/accounts", json={"id": "a1", "name": "Schwab"})
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
+    resp = client.post(
+        "/transactions",
+        json={
+            "id": "s1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "sell",
+            "quantity": 10,
+            "price": 150,
+            "date": "2024-06-01",
+        },
+    )
+    assert resp.status_code == 400
+    assert "Cannot sell" in resp.json()["detail"]
 
 
-def test_delete_item(client: TestClient):
-    client.post("/items", json={"id": "d1", "name": "ToDelete"})
-    resp = client.delete("/items/d1")
-    assert resp.status_code == 204
-    assert client.get("/items/d1").status_code == 404
+def test_delete_transaction(client: TestClient):
+    client.post("/accounts", json={"id": "a1", "name": "Schwab"})
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
+    client.post(
+        "/transactions",
+        json={
+            "id": "t1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "buy",
+            "quantity": 10,
+            "price": 150,
+            "date": "2024-01-01",
+        },
+    )
+    assert client.delete("/transactions/t1").status_code == 204
+    assert client.get("/transactions/t1").status_code == 404
 
 
-def test_delete_item_not_found(client: TestClient):
-    resp = client.delete("/items/nonexistent")
-    assert resp.status_code == 404
+# ─── Positions (computed) ────────────────────────────────────
 
 
-# ─── Category endpoints ───────────────────────────────────────────
+def test_positions_empty(client: TestClient):
+    assert client.get("/positions").json() == []
 
 
-def test_list_categories_empty(client: TestClient):
-    resp = client.get("/categories")
+def test_positions_after_buy(client: TestClient):
+    client.post("/accounts", json={"id": "a1", "name": "Schwab"})
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
+    client.post(
+        "/transactions",
+        json={
+            "id": "t1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "buy",
+            "quantity": 10,
+            "price": 100,
+            "date": "2024-01-01",
+        },
+    )
+    resp = client.get("/positions")
     assert resp.status_code == 200
-    assert resp.json() == []
+    positions = resp.json()
+    assert len(positions) == 1
+    p = positions[0]
+    assert p["instrument_id"] == "aapl"
+    assert p["quantity"] == 10
+    assert p["cost_basis"] == 1000.0
+    assert p["current_price"] == 150.0
+    assert p["market_value"] == 1500.0
+    assert p["unrealized_gain"] == 500.0
 
 
-def test_create_category(client: TestClient):
-    payload = {"id": "c1", "name": "Electronics"}
-    resp = client.post("/categories", json=payload)
-    assert resp.status_code == 201
-    assert resp.json() == {"id": "c1", "name": "Electronics"}
+def test_positions_filter_by_account(client: TestClient):
+    client.post("/accounts", json={"id": "a1", "name": "Schwab"})
+    client.post("/accounts", json={"id": "a2", "name": "Fidelity"})
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
+    client.post(
+        "/transactions",
+        json={
+            "id": "t1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "buy",
+            "quantity": 10,
+            "price": 100,
+            "date": "2024-01-01",
+        },
+    )
+    client.post(
+        "/transactions",
+        json={
+            "id": "t2",
+            "account_id": "a2",
+            "instrument_id": "aapl",
+            "type": "buy",
+            "quantity": 5,
+            "price": 110,
+            "date": "2024-02-01",
+        },
+    )
+    resp = client.get("/positions", params={"account_id": "a1"})
+    positions = resp.json()
+    assert len(positions) == 1
+    assert positions[0]["account_id"] == "a1"
+    assert positions[0]["quantity"] == 10
 
 
-def test_list_categories(client: TestClient):
-    client.post("/categories", json={"id": "c1", "name": "Electronics"})
-    client.post("/categories", json={"id": "c2", "name": "Books"})
-    resp = client.get("/categories")
-    assert resp.status_code == 200
-    assert len(resp.json()) == 2
+# ─── Capital gains (computed) ────────────────────────────────
 
 
-def test_get_category(client: TestClient):
-    client.post("/categories", json={"id": "c1", "name": "Electronics"})
-    resp = client.get("/categories/c1")
-    assert resp.status_code == 200
-    assert resp.json() == {"id": "c1", "name": "Electronics"}
+def test_gains_empty(client: TestClient):
+    assert client.get("/gains").json() == []
 
 
-def test_get_category_not_found(client: TestClient):
-    resp = client.get("/categories/nonexistent")
-    assert resp.status_code == 404
+def test_gains_after_sell(client: TestClient):
+    client.post("/accounts", json={"id": "a1", "name": "Schwab"})
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
+    client.post(
+        "/transactions",
+        json={
+            "id": "t1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "buy",
+            "quantity": 10,
+            "price": 100,
+            "date": "2024-01-01",
+        },
+    )
+    client.post(
+        "/transactions",
+        json={
+            "id": "s1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "sell",
+            "quantity": 5,
+            "price": 150,
+            "date": "2024-06-01",
+        },
+    )
+    resp = client.get("/gains")
+    gains = resp.json()
+    assert len(gains) == 1
+    assert gains[0]["quantity"] == 5
+    assert gains[0]["gain"] == 250.0
 
 
-def test_delete_category(client: TestClient):
-    client.post("/categories", json={"id": "c1", "name": "Electronics"})
-    resp = client.delete("/categories/c1")
-    assert resp.status_code == 204
-    assert client.get("/categories/c1").status_code == 404
+# ─── Portfolio history (computed) ─────────────────────────────
 
 
-def test_delete_category_not_found(client: TestClient):
-    resp = client.delete("/categories/nonexistent")
-    assert resp.status_code == 404
+def test_history_empty(client: TestClient):
+    assert client.get("/history").json() == []
 
 
-# ─── Round-trip integration flows ──────────────────────────────────
+def test_history_after_transactions(client: TestClient):
+    client.post("/accounts", json={"id": "a1", "name": "Schwab"})
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
+    client.post(
+        "/transactions",
+        json={
+            "id": "t1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "buy",
+            "quantity": 10,
+            "price": 100,
+            "date": "2024-01-01",
+        },
+    )
+    resp = client.get("/history")
+    history = resp.json()
+    assert len(history) >= 1
+    assert history[0]["date"] == "2024-01-01"
+    assert history[0]["cost_basis"] == 1000.0
 
 
-def test_post_then_list_roundtrip(client: TestClient):
-    """POST an item, then GET /items should include it."""
-    payload = {
-        "id": "hello",
-        "name": "Hello World",
-        "description": "Skeleton frontend works",
-        "tags": ["welcome"],
-        "category_id": None,
-    }
-    post_resp = client.post("/items", json=payload)
-    assert post_resp.status_code == 201
-
-    list_resp = client.get("/items")
-    assert list_resp.status_code == 200
-    items = list_resp.json()
-    assert len(items) == 1
-    assert items[0] == payload
+# ─── Round-trip flows ─────────────────────────────────────────
 
 
-def test_post_then_get_by_id_roundtrip(client: TestClient):
-    payload = {
-        "id": "hello",
-        "name": "Hello",
-        "description": "hi",
-        "tags": [],
-        "category_id": None,
-    }
-    client.post("/items", json=payload)
+def test_full_portfolio_roundtrip(client: TestClient):
+    """Create account + instrument, buy, sell, check positions + gains."""
+    client.post("/accounts", json={"id": "a1", "name": "Schwab"})
+    client.post("/instruments", json={"id": "aapl", "ticker": "AAPL", "name": "Apple"})
 
-    resp = client.get("/items/hello")
-    assert resp.status_code == 200
-    assert resp.json() == payload
+    # Buy 10 @ 100
+    client.post(
+        "/transactions",
+        json={
+            "id": "t1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "buy",
+            "quantity": 10,
+            "price": 100,
+            "date": "2024-01-01",
+        },
+    )
 
+    # Sell 5 @ 150
+    client.post(
+        "/transactions",
+        json={
+            "id": "s1",
+            "account_id": "a1",
+            "instrument_id": "aapl",
+            "type": "sell",
+            "quantity": 5,
+            "price": 150,
+            "date": "2024-06-01",
+        },
+    )
 
-def test_post_then_filter_by_tag_roundtrip(client: TestClient):
-    """POST multiple items, then filter by tag returns only matching ones."""
-    client.post("/items", json={"id": "a", "name": "A", "tags": ["welcome"]})
-    client.post("/items", json={"id": "b", "name": "B", "tags": ["other"]})
-    client.post("/items", json={"id": "c", "name": "C", "tags": ["welcome", "x"]})
+    # Positions: 5 shares remaining
+    positions = client.get("/positions").json()
+    assert len(positions) == 1
+    assert positions[0]["quantity"] == 5
+    assert positions[0]["cost_basis"] == 500.0
 
-    resp = client.get("/items", params={"tag": "welcome"})
-    assert resp.status_code == 200
-    names = {i["name"] for i in resp.json()}
-    assert names == {"A", "C"}
-
-
-def test_filter_by_nonexistent_tag_returns_empty(client: TestClient):
-    client.post("/items", json={"id": "a", "name": "A", "tags": ["welcome"]})
-    resp = client.get("/items", params={"tag": "missing"})
-    assert resp.status_code == 200
-    assert resp.json() == []
-
-
-def test_multiple_creates_then_list(client: TestClient):
-    for i in range(3):
-        client.post("/items", json={"id": str(i), "name": f"item-{i}"})
-    resp = client.get("/items")
-    assert resp.status_code == 200
-    assert len(resp.json()) == 3
+    # Gains: realized gain of 250
+    gains = client.get("/gains").json()
+    assert len(gains) == 1
+    assert gains[0]["gain"] == 250.0
 
 
 def test_fixture_isolates_state_between_tests(client: TestClient):
-    """Regression guard: each test starts with an empty repo."""
-    assert client.get("/items").json() == []
-    client.post("/items", json={"id": "leak", "name": "leak"})
-    assert len(client.get("/items").json()) == 1
-    # Next test should still see an empty repo — enforced by fresh fixture.
-
-
-def test_category_item_roundtrip(client: TestClient):
-    """Create category -> create item in category -> get item shows category_id."""
-    client.post("/categories", json={"id": "cat1", "name": "Electronics"})
-    client.post(
-        "/items",
-        json={"id": "i1", "name": "Laptop", "category_id": "cat1"},
-    )
-
-    resp = client.get("/items/i1")
-    assert resp.status_code == 200
-    assert resp.json()["category_id"] == "cat1"
-
-    # Filter by category_id
-    resp = client.get("/items", params={"category_id": "cat1"})
-    assert resp.status_code == 200
-    assert len(resp.json()) == 1
-    assert resp.json()[0]["id"] == "i1"
+    """Regression guard: each test starts with empty repos."""
+    assert client.get("/accounts").json() == []
+    assert client.get("/instruments").json() == []
+    assert client.get("/transactions").json() == []

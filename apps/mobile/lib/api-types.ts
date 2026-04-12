@@ -4,73 +4,160 @@
  */
 
 export interface paths {
-    "/items": {
+    "/accounts": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Items */
-        get: operations["list_items_items_get"];
+        /** List Accounts */
+        get: operations["list_accounts_accounts_get"];
         put?: never;
-        /** Create Item */
-        post: operations["create_item_items_post"];
+        /** Create Account */
+        post: operations["create_account_accounts_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/items/{item_id}": {
+    "/accounts/{account_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Item */
-        get: operations["get_item_items__item_id__get"];
+        /** Get Account */
+        get: operations["get_account_accounts__account_id__get"];
         put?: never;
         post?: never;
-        /** Delete Item */
-        delete: operations["delete_item_items__item_id__delete"];
+        /** Delete Account */
+        delete: operations["delete_account_accounts__account_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/categories": {
+    "/instruments": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Categories */
-        get: operations["list_categories_categories_get"];
+        /** List Instruments */
+        get: operations["list_instruments_instruments_get"];
         put?: never;
-        /** Create Category */
-        post: operations["create_category_categories_post"];
+        /** Create Instrument */
+        post: operations["create_instrument_instruments_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/categories/{category_id}": {
+    "/instruments/{instrument_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Category */
-        get: operations["get_category_categories__category_id__get"];
+        /** Get Instrument */
+        get: operations["get_instrument_instruments__instrument_id__get"];
         put?: never;
         post?: never;
-        /** Delete Category */
-        delete: operations["delete_category_categories__category_id__delete"];
+        /** Delete Instrument */
+        delete: operations["delete_instrument_instruments__instrument_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Transactions */
+        get: operations["list_transactions_transactions_get"];
+        put?: never;
+        /** Create Transaction */
+        post: operations["create_transaction_transactions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transactions/{transaction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Transaction */
+        get: operations["get_transaction_transactions__transaction_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Transaction */
+        delete: operations["delete_transaction_transactions__transaction_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Positions */
+        get: operations["get_positions_positions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Realized Gains */
+        get: operations["get_realized_gains_gains_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Portfolio History */
+        get: operations["get_portfolio_history_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -97,62 +184,126 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** CategoryResponse */
-        CategoryResponse: {
+        /** AccountResponse */
+        AccountResponse: {
             /** Id */
             id: string;
             /** Name */
             name: string;
+            /** Account Type */
+            account_type: string;
         };
-        /** CreateCategoryRequest */
-        CreateCategoryRequest: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-        };
-        /** CreateItemRequest */
-        CreateItemRequest: {
+        /** CreateAccountRequest */
+        CreateAccountRequest: {
             /** Id */
             id: string;
             /** Name */
             name: string;
             /**
-             * Description
-             * @default
+             * Account Type
+             * @default brokerage
              */
-            description: string;
-            /**
-             * Tags
-             * @default []
-             */
-            tags: string[];
-            /** Category Id */
-            category_id?: string | null;
+            account_type: string;
+        };
+        /** CreateInstrumentRequest */
+        CreateInstrumentRequest: {
+            /** Id */
+            id: string;
+            /** Ticker */
+            ticker: string;
+            /** Name */
+            name: string;
+        };
+        /** CreateTransactionRequest */
+        CreateTransactionRequest: {
+            /** Id */
+            id: string;
+            /** Account Id */
+            account_id: string;
+            /** Instrument Id */
+            instrument_id: string;
+            /** Type */
+            type: string;
+            /** Quantity */
+            quantity: number;
+            /** Price */
+            price: number;
+            /** Date */
+            date: string;
+        };
+        /** DailyValueResponse */
+        DailyValueResponse: {
+            /** Date */
+            date: string;
+            /** Market Value */
+            market_value: number;
+            /** Cost Basis */
+            cost_basis: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** ItemResponse */
-        ItemResponse: {
+        /** InstrumentResponse */
+        InstrumentResponse: {
             /** Id */
             id: string;
+            /** Ticker */
+            ticker: string;
             /** Name */
             name: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Tags
-             * @default []
-             */
-            tags: string[];
-            /** Category Id */
-            category_id?: string | null;
+        };
+        /** PositionResponse */
+        PositionResponse: {
+            /** Instrument Id */
+            instrument_id: string;
+            /** Account Id */
+            account_id?: string | null;
+            /** Quantity */
+            quantity: number;
+            /** Cost Basis */
+            cost_basis: number;
+            /** Cost Basis Per Share */
+            cost_basis_per_share: number;
+            /** Current Price */
+            current_price?: number | null;
+            /** Market Value */
+            market_value?: number | null;
+            /** Unrealized Gain */
+            unrealized_gain?: number | null;
+        };
+        /** RealizedGainResponse */
+        RealizedGainResponse: {
+            /** Sell Transaction Id */
+            sell_transaction_id: string;
+            /** Buy Transaction Id */
+            buy_transaction_id: string;
+            /** Quantity */
+            quantity: number;
+            /** Buy Price */
+            buy_price: number;
+            /** Sell Price */
+            sell_price: number;
+            /** Gain */
+            gain: number;
+        };
+        /** TransactionResponse */
+        TransactionResponse: {
+            /** Id */
+            id: string;
+            /** Account Id */
+            account_id: string;
+            /** Instrument Id */
+            instrument_id: string;
+            /** Type */
+            type: string;
+            /** Quantity */
+            quantity: number;
+            /** Price */
+            price: number;
+            /** Date */
+            date: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -176,11 +327,237 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_items_items_get: {
+    list_accounts_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponse"][];
+                };
+            };
+        };
+    };
+    create_account_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_account_accounts__account_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_account_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_instruments_instruments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstrumentResponse"][];
+                };
+            };
+        };
+    };
+    create_instrument_instruments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInstrumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstrumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_instrument_instruments__instrument_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstrumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_instrument_instruments__instrument_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_transactions_transactions_get: {
         parameters: {
             query?: {
-                tag?: string | null;
-                category_id?: string | null;
+                account_id?: string | null;
+                instrument_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -194,7 +571,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ItemResponse"][];
+                    "application/json": components["schemas"]["TransactionResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -208,7 +585,7 @@ export interface operations {
             };
         };
     };
-    create_item_items_post: {
+    create_transaction_transactions_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -217,7 +594,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateItemRequest"];
+                "application/json": components["schemas"]["CreateTransactionRequest"];
             };
         };
         responses: {
@@ -227,7 +604,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ItemResponse"];
+                    "application/json": components["schemas"]["TransactionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -241,12 +618,12 @@ export interface operations {
             };
         };
     };
-    get_item_items__item_id__get: {
+    get_transaction_transactions__transaction_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                item_id: string;
+                transaction_id: string;
             };
             cookie?: never;
         };
@@ -258,7 +635,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ItemResponse"];
+                    "application/json": components["schemas"]["TransactionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -272,12 +649,12 @@ export interface operations {
             };
         };
     };
-    delete_item_items__item_id__delete: {
+    delete_transaction_transactions__transaction_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                item_id: string;
+                transaction_id: string;
             };
             cookie?: never;
         };
@@ -301,9 +678,12 @@ export interface operations {
             };
         };
     };
-    list_categories_categories_get: {
+    get_positions_positions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                account_id?: string | null;
+                instrument_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -316,31 +696,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CategoryResponse"][];
-                };
-            };
-        };
-    };
-    create_category_categories_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateCategoryRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CategoryResponse"];
+                    "application/json": components["schemas"]["PositionResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -354,13 +710,14 @@ export interface operations {
             };
         };
     };
-    get_category_categories__category_id__get: {
+    get_realized_gains_gains_get: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                category_id: string;
+            query?: {
+                account_id?: string | null;
+                instrument_id?: string | null;
             };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -371,7 +728,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CategoryResponse"];
+                    "application/json": components["schemas"]["RealizedGainResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -385,23 +742,25 @@ export interface operations {
             };
         };
     };
-    delete_category_categories__category_id__delete: {
+    get_portfolio_history_history_get: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                category_id: string;
+            query?: {
+                account_id?: string | null;
             };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DailyValueResponse"][];
+                };
             };
             /** @description Validation Error */
             422: {

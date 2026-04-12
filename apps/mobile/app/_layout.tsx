@@ -10,13 +10,17 @@ export default function RootLayout() {
     <ThemeContext.Provider value={lightTheme}>
       <QueryClientProvider client={queryClient}>
         <Stack>
-          <Stack.Screen name="index" options={{ title: "Items" }} />
+          <Stack.Screen name="index" options={{ title: "Portfolio" }} />
+          <Stack.Screen name="accounts" options={{ title: "Accounts" }} />
+          <Stack.Screen name="instruments" options={{ title: "Instruments" }} />
           <Stack.Screen
-            name="items/[id]/index"
-            options={{ title: "Item Detail" }}
+            name="transactions/new"
+            options={{ title: "Log Trade" }}
           />
-          <Stack.Screen name="items/new" options={{ title: "New Item" }} />
-          <Stack.Screen name="categories" options={{ title: "Categories" }} />
+          <Stack.Screen
+            name="portfolio/[slug]"
+            options={{ title: "Detail" }}
+          />
         </Stack>
       </QueryClientProvider>
     </ThemeContext.Provider>

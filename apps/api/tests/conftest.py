@@ -13,7 +13,7 @@ targets, False for anything else (unless `SKELETON_E2E_ALLOW_WRITES=1`).
 This prevents a misconfigured cron from POSTing junk into prod.
 
 Unit and integration tiers do NOT use these fixtures — they run in-process
-via `TestClient` and `FakeItemRepository`.
+via `TestClient` and fake repositories.
 """
 
 from __future__ import annotations

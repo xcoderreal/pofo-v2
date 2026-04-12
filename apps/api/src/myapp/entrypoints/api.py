@@ -5,25 +5,38 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from myapp.adapters.memory_repository import (
-    MemoryCategoryRepository,
-    MemoryItemRepository,
+    MemoryAccountRepository,
+    MemoryInstrumentRepository,
+    MemoryTransactionRepository,
 )
-from myapp.domain.model import Category, Item
-from myapp.domain.repository import CategoryRepository, ItemRepository
-from myapp.service.category_service import CategoryService
-from myapp.service.item_service import ItemService
+from myapp.adapters.yahoo_price_source import YahooPriceSource
+from myapp.domain.model import (
+    Account,
+    AccountType,
+    Instrument,
+    Transaction,
+    TransactionType,
+)
+from myapp.domain.price_source import PriceSource
+from myapp.domain.repository import (
+    AccountRepository,
+    InstrumentRepository,
+    TransactionRepository,
+)
+from myapp.service.portfolio_service import PortfolioService
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create long-lived resources at startup; clean up on shutdown.
-    # Swap the adapter here when adding persistence (SQLite, Postgres, etc.).
-    app.state.item_repo = MemoryItemRepository()
-    app.state.category_repo = MemoryCategoryRepository()
+    app.state.account_repo = MemoryAccountRepository()
+    app.state.instrument_repo = MemoryInstrumentRepository()
+    app.state.transaction_repo = MemoryTransactionRepository()
+    price_source = YahooPriceSource()
+    app.state.price_source = price_source
     yield
 
 
-app = FastAPI(title="My App", description="API backend", lifespan=lifespan)
+app = FastAPI(title="Pofo", description="Portfolio tracker API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,174 +46,350 @@ app.add_middleware(
 )
 
 
-# ─── Item dependencies ────────────────────────────────────────
+# ─── Dependencies ─────────────────────────────────────────────
 
 
-def get_repo(request: Request) -> ItemRepository:
-    return request.app.state.item_repo
+def get_account_repo(request: Request) -> AccountRepository:
+    return request.app.state.account_repo
 
 
-def get_service(repo: ItemRepository = Depends(get_repo)) -> ItemService:
-    return ItemService(repo=repo)
+def get_instrument_repo(request: Request) -> InstrumentRepository:
+    return request.app.state.instrument_repo
 
 
-# ─── Category dependencies ────────────────────────────────────
+def get_transaction_repo(request: Request) -> TransactionRepository:
+    return request.app.state.transaction_repo
 
 
-def get_category_repo(request: Request) -> CategoryRepository:
-    return request.app.state.category_repo
+def get_price_source(request: Request) -> PriceSource:
+    return request.app.state.price_source
 
 
-def get_category_service(
-    repo: CategoryRepository = Depends(get_category_repo),
-) -> CategoryService:
-    return CategoryService(repo=repo)
-
-
-# ─── Item schemas ─────────────────────────────────────────────
-
-
-class ItemResponse(BaseModel):
-    id: str
-    name: str
-    description: str = ""
-    tags: list[str] = []
-    category_id: str | None = None
-
-
-class CreateItemRequest(BaseModel):
-    id: str
-    name: str
-    description: str = ""
-    tags: list[str] = []
-    category_id: str | None = None
-
-
-# ─── Category schemas ─────────────────────────────────────────
-
-
-class CategoryResponse(BaseModel):
-    id: str
-    name: str
-
-
-class CreateCategoryRequest(BaseModel):
-    id: str
-    name: str
-
-
-# ─── Converters ───────────────────────────────────────────────
-
-
-def _to_item_response(item: Item) -> ItemResponse:
-    return ItemResponse(
-        id=item.id,
-        name=item.name,
-        description=item.description,
-        tags=item.tags,
-        category_id=item.category_id,
+def get_service(
+    account_repo: AccountRepository = Depends(get_account_repo),
+    instrument_repo: InstrumentRepository = Depends(get_instrument_repo),
+    transaction_repo: TransactionRepository = Depends(get_transaction_repo),
+    price_source: PriceSource = Depends(get_price_source),
+) -> PortfolioService:
+    return PortfolioService(
+        account_repo=account_repo,
+        instrument_repo=instrument_repo,
+        transaction_repo=transaction_repo,
+        price_source=price_source,
     )
 
 
-def _to_category_response(category: Category) -> CategoryResponse:
-    return CategoryResponse(id=category.id, name=category.name)
+# ─── Account schemas ─────────────────────────────────────────
 
 
-# ─── Item routes ──────────────────────────────────────────────
+class AccountResponse(BaseModel):
+    id: str
+    name: str
+    account_type: str
 
 
-@app.get("/items", response_model=list[ItemResponse])
-def list_items(
-    tag: str | None = None,
-    category_id: str | None = None,
-    service: ItemService = Depends(get_service),
+class CreateAccountRequest(BaseModel):
+    id: str
+    name: str
+    account_type: str = "brokerage"
+
+
+# ─── Instrument schemas ──────────────────────────────────────
+
+
+class InstrumentResponse(BaseModel):
+    id: str
+    ticker: str
+    name: str
+
+
+class CreateInstrumentRequest(BaseModel):
+    id: str
+    ticker: str
+    name: str
+
+
+# ─── Transaction schemas ─────────────────────────────────────
+
+
+class TransactionResponse(BaseModel):
+    id: str
+    account_id: str
+    instrument_id: str
+    type: str
+    quantity: float
+    price: float
+    date: str
+
+
+class CreateTransactionRequest(BaseModel):
+    id: str
+    account_id: str
+    instrument_id: str
+    type: str
+    quantity: float
+    price: float
+    date: str
+
+
+# ─── Position schemas ────────────────────────────────────────
+
+
+class PositionResponse(BaseModel):
+    instrument_id: str
+    account_id: str | None = None
+    quantity: float
+    cost_basis: float
+    cost_basis_per_share: float
+    current_price: float | None = None
+    market_value: float | None = None
+    unrealized_gain: float | None = None
+
+
+# ─── Capital gains schemas ───────────────────────────────────
+
+
+class RealizedGainResponse(BaseModel):
+    sell_transaction_id: str
+    buy_transaction_id: str
+    quantity: float
+    buy_price: float
+    sell_price: float
+    gain: float
+
+
+# ─── Portfolio history schemas ───────────────────────────────
+
+
+class DailyValueResponse(BaseModel):
+    date: str
+    market_value: float
+    cost_basis: float
+
+
+# ─── Converters ──────────────────────────────────────────────
+
+
+def _to_account_response(acct: Account) -> AccountResponse:
+    return AccountResponse(
+        id=acct.id, name=acct.name, account_type=acct.account_type.value
+    )
+
+
+def _to_instrument_response(inst: Instrument) -> InstrumentResponse:
+    return InstrumentResponse(id=inst.id, ticker=inst.ticker, name=inst.name)
+
+
+def _to_transaction_response(txn: Transaction) -> TransactionResponse:
+    return TransactionResponse(
+        id=txn.id,
+        account_id=txn.account_id,
+        instrument_id=txn.instrument_id,
+        type=txn.type.value,
+        quantity=txn.quantity,
+        price=txn.price,
+        date=txn.date.isoformat(),
+    )
+
+
+# ─── Account routes ──────────────────────────────────────────
+
+
+@app.get("/accounts", response_model=list[AccountResponse])
+def list_accounts(service: PortfolioService = Depends(get_service)):
+    return [_to_account_response(a) for a in service.list_accounts()]
+
+
+@app.get("/accounts/{account_id}", response_model=AccountResponse)
+def get_account(account_id: str, service: PortfolioService = Depends(get_service)):
+    acct = service.get_account(account_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return _to_account_response(acct)
+
+
+@app.post("/accounts", response_model=AccountResponse, status_code=201)
+def create_account(
+    request: CreateAccountRequest,
+    service: PortfolioService = Depends(get_service),
 ):
-    items = service.list_items(tag=tag)
-    if category_id is not None:
-        items = [i for i in items if i.category_id == category_id]
-    return [_to_item_response(i) for i in items]
-
-
-@app.get("/items/{item_id}", response_model=ItemResponse)
-def get_item(
-    item_id: str,
-    service: ItemService = Depends(get_service),
-):
-    item = service.get_item(item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-    return _to_item_response(item)
-
-
-@app.post("/items", response_model=ItemResponse, status_code=201)
-def create_item(
-    request: CreateItemRequest,
-    service: ItemService = Depends(get_service),
-):
-    item = Item(
+    acct = Account(
         id=request.id,
         name=request.name,
-        description=request.description,
-        tags=request.tags,
-        category_id=request.category_id,
+        account_type=AccountType(request.account_type),
     )
-    service.create_item(item)
-    return _to_item_response(item)
+    service.create_account(acct)
+    return _to_account_response(acct)
 
 
-@app.delete("/items/{item_id}", status_code=204)
-def delete_item(
-    item_id: str,
-    service: ItemService = Depends(get_service),
+@app.delete("/accounts/{account_id}", status_code=204)
+def delete_account(account_id: str, service: PortfolioService = Depends(get_service)):
+    if not service.delete_account(account_id):
+        raise HTTPException(status_code=404, detail="Account not found")
+
+
+# ─── Instrument routes ───────────────────────────────────────
+
+
+@app.get("/instruments", response_model=list[InstrumentResponse])
+def list_instruments(service: PortfolioService = Depends(get_service)):
+    return [_to_instrument_response(i) for i in service.list_instruments()]
+
+
+@app.get("/instruments/{instrument_id}", response_model=InstrumentResponse)
+def get_instrument(
+    instrument_id: str, service: PortfolioService = Depends(get_service)
 ):
-    item = service.get_item(item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-    service.delete_item(item_id)
+    inst = service.get_instrument(instrument_id)
+    if not inst:
+        raise HTTPException(status_code=404, detail="Instrument not found")
+    return _to_instrument_response(inst)
 
 
-# ─── Category routes ──────────────────────────────────────────
-
-
-@app.get("/categories", response_model=list[CategoryResponse])
-def list_categories(
-    service: CategoryService = Depends(get_category_service),
+@app.post("/instruments", response_model=InstrumentResponse, status_code=201)
+def create_instrument(
+    request: CreateInstrumentRequest,
+    service: PortfolioService = Depends(get_service),
 ):
-    return [_to_category_response(c) for c in service.list_categories()]
+    inst = Instrument(id=request.id, ticker=request.ticker, name=request.name)
+    service.create_instrument(inst)
+    return _to_instrument_response(inst)
 
 
-@app.get("/categories/{category_id}", response_model=CategoryResponse)
-def get_category(
-    category_id: str,
-    service: CategoryService = Depends(get_category_service),
+@app.delete("/instruments/{instrument_id}", status_code=204)
+def delete_instrument(
+    instrument_id: str, service: PortfolioService = Depends(get_service)
 ):
-    category = service.get_category(category_id)
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-    return _to_category_response(category)
+    if not service.delete_instrument(instrument_id):
+        raise HTTPException(status_code=404, detail="Instrument not found")
 
 
-@app.post("/categories", response_model=CategoryResponse, status_code=201)
-def create_category(
-    request: CreateCategoryRequest,
-    service: CategoryService = Depends(get_category_service),
+# ─── Transaction routes ──────────────────────────────────────
+
+
+@app.get("/transactions", response_model=list[TransactionResponse])
+def list_transactions(
+    account_id: str | None = None,
+    instrument_id: str | None = None,
+    service: PortfolioService = Depends(get_service),
 ):
-    category = Category(id=request.id, name=request.name)
-    service.create_category(category)
-    return _to_category_response(category)
+    txns = service.list_transactions(account_id=account_id, instrument_id=instrument_id)
+    return [_to_transaction_response(t) for t in txns]
 
 
-@app.delete("/categories/{category_id}", status_code=204)
-def delete_category(
-    category_id: str,
-    service: CategoryService = Depends(get_category_service),
+@app.get("/transactions/{transaction_id}", response_model=TransactionResponse)
+def get_transaction(
+    transaction_id: str, service: PortfolioService = Depends(get_service)
 ):
-    deleted = service.delete_category(category_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Category not found")
+    txn = service.get_transaction(transaction_id)
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return _to_transaction_response(txn)
 
 
-# ─── Health ───────────────────────────────────────────────────
+@app.post("/transactions", response_model=TransactionResponse, status_code=201)
+def create_transaction(
+    request: CreateTransactionRequest,
+    service: PortfolioService = Depends(get_service),
+):
+    from datetime import date
+
+    txn = Transaction(
+        id=request.id,
+        account_id=request.account_id,
+        instrument_id=request.instrument_id,
+        type=TransactionType(request.type),
+        quantity=request.quantity,
+        price=request.price,
+        date=date.fromisoformat(request.date),
+    )
+    try:
+        service.create_transaction(txn)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return _to_transaction_response(txn)
+
+
+@app.delete("/transactions/{transaction_id}", status_code=204)
+def delete_transaction(
+    transaction_id: str, service: PortfolioService = Depends(get_service)
+):
+    if not service.delete_transaction(transaction_id):
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+
+# ─── Position routes (computed) ───────────────────────────────
+
+
+@app.get("/positions", response_model=list[PositionResponse])
+def get_positions(
+    account_id: str | None = None,
+    instrument_id: str | None = None,
+    service: PortfolioService = Depends(get_service),
+):
+    positions = service.get_positions(
+        account_id=account_id, instrument_id=instrument_id
+    )
+    return [
+        PositionResponse(
+            instrument_id=p.instrument_id,
+            account_id=p.account_id,
+            quantity=p.quantity,
+            cost_basis=p.cost_basis,
+            cost_basis_per_share=p.cost_basis_per_share,
+            current_price=p.current_price,
+            market_value=p.market_value,
+            unrealized_gain=p.unrealized_gain,
+        )
+        for p in positions
+    ]
+
+
+# ─── Capital gains routes (computed) ─────────────────────────
+
+
+@app.get("/gains", response_model=list[RealizedGainResponse])
+def get_realized_gains(
+    account_id: str | None = None,
+    instrument_id: str | None = None,
+    service: PortfolioService = Depends(get_service),
+):
+    gains = service.get_realized_gains(
+        account_id=account_id, instrument_id=instrument_id
+    )
+    return [
+        RealizedGainResponse(
+            sell_transaction_id=g.sell_transaction_id,
+            buy_transaction_id=g.buy_transaction_id,
+            quantity=g.quantity,
+            buy_price=g.buy_price,
+            sell_price=g.sell_price,
+            gain=g.gain,
+        )
+        for g in gains
+    ]
+
+
+# ─── Portfolio history (computed) ─────────────────────────────
+
+
+@app.get("/history", response_model=list[DailyValueResponse])
+def get_portfolio_history(
+    account_id: str | None = None,
+    service: PortfolioService = Depends(get_service),
+):
+    history = service.get_portfolio_history(account_id=account_id)
+    return [
+        DailyValueResponse(
+            date=h.date.isoformat(),
+            market_value=h.market_value,
+            cost_basis=h.cost_basis,
+        )
+        for h in history
+    ]
+
+
+# ─── Health ──────────────────────────────────────────────────
 
 
 @app.get("/health")

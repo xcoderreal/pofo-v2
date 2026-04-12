@@ -1,50 +1,84 @@
-from myapp.domain.model import Category, Item
-from myapp.domain.repository import CategoryRepository, ItemRepository
+from myapp.domain.model import Account, Instrument, Transaction
+from myapp.domain.repository import (
+    AccountRepository,
+    InstrumentRepository,
+    TransactionRepository,
+)
 
 
-class FakeItemRepository(ItemRepository):
-    def __init__(self, items: list[Item] | None = None):
-        self._items: list[Item] = list(items or [])
+class FakeAccountRepository(AccountRepository):
+    def __init__(self, accounts: list[Account] | None = None):
+        self._accounts: list[Account] = list(accounts or [])
 
-    def list_all(self) -> list[Item]:
-        return list(self._items)
+    def list_all(self) -> list[Account]:
+        return list(self._accounts)
 
-    def get(self, item_id: str) -> Item | None:
-        for item in self._items:
-            if item.id == item_id:
-                return item
+    def get(self, account_id: str) -> Account | None:
+        for acct in self._accounts:
+            if acct.id == account_id:
+                return acct
         return None
 
-    def add(self, item: Item) -> None:
-        self._items.append(item)
+    def add(self, account: Account) -> None:
+        self._accounts.append(account)
 
-    def delete(self, item_id: str) -> bool:
-        for i, item in enumerate(self._items):
-            if item.id == item_id:
-                self._items.pop(i)
+    def delete(self, account_id: str) -> bool:
+        for i, acct in enumerate(self._accounts):
+            if acct.id == account_id:
+                self._accounts.pop(i)
                 return True
         return False
 
 
-class FakeCategoryRepository(CategoryRepository):
-    def __init__(self, categories: list[Category] | None = None):
-        self._categories: list[Category] = list(categories or [])
+class FakeInstrumentRepository(InstrumentRepository):
+    def __init__(self, instruments: list[Instrument] | None = None):
+        self._instruments: list[Instrument] = list(instruments or [])
 
-    def list_all(self) -> list[Category]:
-        return list(self._categories)
+    def list_all(self) -> list[Instrument]:
+        return list(self._instruments)
 
-    def get(self, category_id: str) -> Category | None:
-        for cat in self._categories:
-            if cat.id == category_id:
-                return cat
+    def get(self, instrument_id: str) -> Instrument | None:
+        for inst in self._instruments:
+            if inst.id == instrument_id:
+                return inst
         return None
 
-    def add(self, category: Category) -> None:
-        self._categories.append(category)
+    def add(self, instrument: Instrument) -> None:
+        self._instruments.append(instrument)
 
-    def delete(self, category_id: str) -> bool:
-        for i, cat in enumerate(self._categories):
-            if cat.id == category_id:
-                self._categories.pop(i)
+    def delete(self, instrument_id: str) -> bool:
+        for i, inst in enumerate(self._instruments):
+            if inst.id == instrument_id:
+                self._instruments.pop(i)
                 return True
         return False
+
+
+class FakeTransactionRepository(TransactionRepository):
+    def __init__(self, transactions: list[Transaction] | None = None):
+        self._transactions: list[Transaction] = list(transactions or [])
+
+    def list_all(self) -> list[Transaction]:
+        return list(self._transactions)
+
+    def get(self, transaction_id: str) -> Transaction | None:
+        for txn in self._transactions:
+            if txn.id == transaction_id:
+                return txn
+        return None
+
+    def add(self, transaction: Transaction) -> None:
+        self._transactions.append(transaction)
+
+    def delete(self, transaction_id: str) -> bool:
+        for i, txn in enumerate(self._transactions):
+            if txn.id == transaction_id:
+                self._transactions.pop(i)
+                return True
+        return False
+
+    def list_by_account(self, account_id: str) -> list[Transaction]:
+        return [t for t in self._transactions if t.account_id == account_id]
+
+    def list_by_instrument(self, instrument_id: str) -> list[Transaction]:
+        return [t for t in self._transactions if t.instrument_id == instrument_id]

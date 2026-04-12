@@ -4,10 +4,17 @@ import { resolveApiBaseUrl } from "./env";
 const BASE_URL = resolveApiBaseUrl();
 
 /** Backend types — generated from Pydantic models via OpenAPI. */
-export type Item = components["schemas"]["ItemResponse"];
-export type CreateItemRequest = components["schemas"]["CreateItemRequest"];
-export type Category = components["schemas"]["CategoryResponse"];
-export type CreateCategoryRequest = components["schemas"]["CreateCategoryRequest"];
+export type Account = components["schemas"]["AccountResponse"];
+export type CreateAccountRequest = components["schemas"]["CreateAccountRequest"];
+export type Instrument = components["schemas"]["InstrumentResponse"];
+export type CreateInstrumentRequest =
+  components["schemas"]["CreateInstrumentRequest"];
+export type Transaction = components["schemas"]["TransactionResponse"];
+export type CreateTransactionRequest =
+  components["schemas"]["CreateTransactionRequest"];
+export type Position = components["schemas"]["PositionResponse"];
+export type RealizedGain = components["schemas"]["RealizedGainResponse"];
+export type DailyValue = components["schemas"]["DailyValueResponse"];
 
 function resolveBase(): string {
   return BASE_URL.startsWith("/")
@@ -15,54 +22,22 @@ function resolveBase(): string {
     : BASE_URL;
 }
 
-// ─── Items ───────────────────────────────────────────────────
+// ─── Accounts ───────────────────────────────────────────────
 
-export async function fetchItems(params?: {
-  tag?: string;
-  category_id?: string;
-}): Promise<Item[]> {
-  const url = new URL(`${resolveBase()}/items`);
-  if (params?.tag) url.searchParams.set("tag", params.tag);
-  if (params?.category_id)
-    url.searchParams.set("category_id", params.category_id);
-  const res = await fetch(url.toString());
+export async function fetchAccounts(): Promise<Account[]> {
+  const res = await fetch(`${resolveBase()}/accounts`);
   return res.json();
 }
 
-export async function fetchItem(id: string): Promise<Item> {
-  const res = await fetch(`${resolveBase()}/items/${id}`);
+export async function fetchAccount(id: string): Promise<Account> {
+  const res = await fetch(`${resolveBase()}/accounts/${id}`);
   return res.json();
 }
 
-export async function createItem(item: CreateItemRequest): Promise<Item> {
-  const res = await fetch(`${resolveBase()}/items`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(item),
-  });
-  return res.json();
-}
-
-export async function deleteItem(id: string): Promise<void> {
-  await fetch(`${resolveBase()}/items/${id}`, { method: "DELETE" });
-}
-
-// ─── Categories ──────────────────────────────────────────────
-
-export async function fetchCategories(): Promise<Category[]> {
-  const res = await fetch(`${resolveBase()}/categories`);
-  return res.json();
-}
-
-export async function fetchCategory(id: string): Promise<Category> {
-  const res = await fetch(`${resolveBase()}/categories/${id}`);
-  return res.json();
-}
-
-export async function createCategory(
-  data: CreateCategoryRequest,
-): Promise<Category> {
-  const res = await fetch(`${resolveBase()}/categories`, {
+export async function createAccount(
+  data: CreateAccountRequest,
+): Promise<Account> {
+  const res = await fetch(`${resolveBase()}/accounts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -70,6 +45,109 @@ export async function createCategory(
   return res.json();
 }
 
-export async function deleteCategory(id: string): Promise<void> {
-  await fetch(`${resolveBase()}/categories/${id}`, { method: "DELETE" });
+export async function deleteAccount(id: string): Promise<void> {
+  await fetch(`${resolveBase()}/accounts/${id}`, { method: "DELETE" });
+}
+
+// ─── Instruments ────────────────────────────────────────────
+
+export async function fetchInstruments(): Promise<Instrument[]> {
+  const res = await fetch(`${resolveBase()}/instruments`);
+  return res.json();
+}
+
+export async function fetchInstrument(id: string): Promise<Instrument> {
+  const res = await fetch(`${resolveBase()}/instruments/${id}`);
+  return res.json();
+}
+
+export async function createInstrument(
+  data: CreateInstrumentRequest,
+): Promise<Instrument> {
+  const res = await fetch(`${resolveBase()}/instruments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deleteInstrument(id: string): Promise<void> {
+  await fetch(`${resolveBase()}/instruments/${id}`, { method: "DELETE" });
+}
+
+// ─── Transactions ───────────────────────────────────────────
+
+export async function fetchTransactions(params?: {
+  account_id?: string;
+  instrument_id?: string;
+}): Promise<Transaction[]> {
+  const url = new URL(`${resolveBase()}/transactions`);
+  if (params?.account_id)
+    url.searchParams.set("account_id", params.account_id);
+  if (params?.instrument_id)
+    url.searchParams.set("instrument_id", params.instrument_id);
+  const res = await fetch(url.toString());
+  return res.json();
+}
+
+export async function createTransaction(
+  data: CreateTransactionRequest,
+): Promise<Transaction> {
+  const res = await fetch(`${resolveBase()}/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to create transaction");
+  }
+  return res.json();
+}
+
+export async function deleteTransaction(id: string): Promise<void> {
+  await fetch(`${resolveBase()}/transactions/${id}`, { method: "DELETE" });
+}
+
+// ─── Positions (computed) ───────────────────────────────────
+
+export async function fetchPositions(params?: {
+  account_id?: string;
+  instrument_id?: string;
+}): Promise<Position[]> {
+  const url = new URL(`${resolveBase()}/positions`);
+  if (params?.account_id)
+    url.searchParams.set("account_id", params.account_id);
+  if (params?.instrument_id)
+    url.searchParams.set("instrument_id", params.instrument_id);
+  const res = await fetch(url.toString());
+  return res.json();
+}
+
+// ─── Capital gains (computed) ───────────────────────────────
+
+export async function fetchGains(params?: {
+  account_id?: string;
+  instrument_id?: string;
+}): Promise<RealizedGain[]> {
+  const url = new URL(`${resolveBase()}/gains`);
+  if (params?.account_id)
+    url.searchParams.set("account_id", params.account_id);
+  if (params?.instrument_id)
+    url.searchParams.set("instrument_id", params.instrument_id);
+  const res = await fetch(url.toString());
+  return res.json();
+}
+
+// ─── Portfolio history (computed) ───────────────────────────
+
+export async function fetchHistory(params?: {
+  account_id?: string;
+}): Promise<DailyValue[]> {
+  const url = new URL(`${resolveBase()}/history`);
+  if (params?.account_id)
+    url.searchParams.set("account_id", params.account_id);
+  const res = await fetch(url.toString());
+  return res.json();
 }
