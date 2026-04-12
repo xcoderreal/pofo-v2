@@ -115,6 +115,10 @@ When the skeleton grows beyond `MemoryItemRepository` (e.g. you add a `SqliteIte
 
 The adapter conformance unit tests are the contract. The smoke/e2e re-runs prove the contract holds end-to-end. Together, that's the testing story for any new adapter.
 
+**This pattern applies to all capability ABCs, not just storage repositories.** A `PriceSource` adapter gets the same treatment: unit tests in `tests/unit/adapters/test_<vendor>_price_source.py` (using `httpx.MockTransport` or equivalent for network isolation), integration uses `FakePriceSource` via `dependency_overrides`, and smoke/e2e exercise the real adapter through the spawned uvicorn.
+
+**Real-network tests belong in e2e, not smoke.** When an adapter calls a third-party API (Coinbase, yfinance, a weather service), the test that verifies the real upstream works goes in `tests/e2e/`. Smoke must remain cronnable against prod without flakes — external API failures would make it unreliable. The deterministic parser/cache behavior should already be pinned by unit tests against `MockTransport`; e2e only needs one happy-path round-trip. Skip gracefully when the upstream is unreachable.
+
 ### Recommended: parametrize the unit tests over both adapters
 
 When you have a real adapter alongside `MemoryItemRepository`, the cleanest pattern is **one test file** that parametrizes over both:

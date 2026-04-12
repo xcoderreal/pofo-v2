@@ -22,6 +22,3 @@ class MemoryItemRepository(ItemRepository):
 
     def add(self, item: Item) -> None:
         self._items.append(item)
-
-    def add_many(self, items: list[Item]) -> None:
-        self._items.extend(items)

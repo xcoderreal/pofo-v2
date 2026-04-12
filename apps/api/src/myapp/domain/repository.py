@@ -12,6 +12,3 @@ class ItemRepository(ABC):
 
     @abstractmethod
     def add(self, item: Item) -> None: ...
-
-    @abstractmethod
-    def add_many(self, items: list[Item]) -> None: ...

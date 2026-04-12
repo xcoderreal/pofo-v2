@@ -30,12 +30,11 @@ def client(repo: FakeItemRepository) -> TestClient:
 
 @pytest.fixture
 def seeded_client(repo: FakeItemRepository) -> TestClient:
-    repo.add_many(
-        [
-            Item(id="r1", name="Alpha", tags=["a"]),
-            Item(id="r2", name="Beta", tags=["b"]),
-        ]
-    )
+    for item in [
+        Item(id="r1", name="Alpha", tags=["a"]),
+        Item(id="r2", name="Beta", tags=["b"]),
+    ]:
+        repo.add(item)
     app.dependency_overrides[get_repo] = lambda: repo
     try:
         yield TestClient(app)

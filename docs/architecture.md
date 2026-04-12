@@ -136,7 +136,7 @@ The middle of the stack is written once and never rewritten when you swap a back
 
 4. **The ABC fits the 90% case. The 10% case customizes its adapter.** Don't design the repository interface for every backend and every feature you might one day need. Design it for the common CRUD shape (get, list, add, delete) and let edge cases add methods to their *specific* adapter, wired through a single service method — not through the ABC.
 
-**The rule of three for growing the ABC.** First caller with an edge-case need (pagination, batch insert, upsert, full-text search, …) solves it as a one-off on their adapter. Second caller copies the pattern. Third caller promotes it into the ABC. This is the same heuristic as "three similar lines beats a premature abstraction" — applied to the repository contract.
+**The rule of three for growing the ABC.** Basic CRUD operations (create, read, update, delete) belong in the ABC from the start — they're the 90% shape every adapter implements. Edge-case methods (pagination, batch insert, upsert, full-text search, faceted queries like "list all distinct tags") follow the rule of three: first caller solves it as a one-off on their adapter, second caller copies, third caller promotes to the ABC. This is the same heuristic as "three similar lines beats a premature abstraction" — applied to the repository contract.
 
 **What this means for the usual suspects:**
 
@@ -248,6 +248,17 @@ The API client auto-detects the environment:
 - **Android emulator**: `10.0.2.2:8090` (Android's localhost alias)
 
 No environment variables needed for dev. Set `EXPO_PUBLIC_API_URL` to override.
+
+### Adding a new screen
+
+To add a new screen (e.g., a detail page):
+
+1. **Create the route file** in `app/` — expo-router uses file-based routing. `app/items/[id]/index.tsx` gives you `/items/:id`. Dynamic segments use `[param]` syntax.
+2. **You usually don't need to touch `_layout.tsx`.** expo-router auto-registers file-based routes. Only edit the layout if you need a custom header, tab bar, or drawer.
+3. **Data fetching: `useFocusEffect` + fetch**, not a global store. Each screen owns its data via a fetch that re-runs when the screen gains focus. This is how "edit → navigate back → see updated value" works without state management.
+4. **Deep-link friendliness.** Every screen's state should be derivable from route params + a fetch, not from a store populated earlier in the flow. This makes deep linking work trivially.
+5. **Add `testID` props** to interactive elements. `testID` maps to `data-testid` on react-native-web, which Playwright's `getByTestId` uses for stable selectors.
+6. **Add a Playwright spec** in `apps/mobile/tests/web/`. At minimum, one happy-path test that navigates to the screen and asserts the expected content renders. See CLAUDE.md § "Web test conventions."
 
 ## Deployment: Vercel
 
