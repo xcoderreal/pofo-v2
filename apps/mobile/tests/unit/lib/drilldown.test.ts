@@ -4,9 +4,6 @@ import {
   clearAccount,
   clearInstrument,
   INITIAL_VIEW_STATE,
-  metricHasAccountDimension,
-  metricHasInstrumentDimension,
-  metricLabel,
   resolveLevel,
   scopeParams,
   selectAccount,
@@ -125,6 +122,39 @@ describe("selectAccount", () => {
     expect(next.metric).toBe("realized_gain");
   });
 
+  test("cash balance is not forced on a slice, even in an account with no instruments", () => {
+    // Reachable from the Accounts sheet at instrument level. cash_balance
+    // has no instrument dimension, so this would be exactly the query
+    // auto-adjustment 4 exists to prevent.
+    const next = selectAccount(state({ instrumentId: "goog" }), "reserve", {
+      holdsInstruments: false,
+    });
+
+    expect(next.metric).toBe("equity");
+    expect(next.instrumentId).toBe("goog");
+  });
+
+  test("market price falls back to equity — it has no account dimension", () => {
+    // Reachable from the Accounts sheet at instrument level, and the API
+    // rejects accounts-with-market_price outright.
+    const next = selectAccount(state({ instrumentId: "goog", metric: "market_price" }), "ira", {
+      holdsInstruments: true,
+    });
+
+    expect(next.metric).toBe("equity");
+    expect(next.accountId).toBe("ira");
+  });
+
+  test("share count survives — it has an account dimension", () => {
+    const next = selectAccount(
+      state({ instrumentId: "goog", metric: "share_count" }),
+      "ira",
+      { holdsInstruments: true },
+    );
+
+    expect(next.metric).toBe("share_count");
+  });
+
   test("arriving at an account that does hold instruments restores equity", () => {
     // The converse repair, from the prototype's gotoAcct: without it one
     // visit to a cash-only account leaves every later account stuck
@@ -166,6 +196,16 @@ describe("clearing a chip", () => {
     expect(resolveLevel(next)).toBe("portfolio");
   });
 
+  test("instrument: a metric that needs one falls back to equity", () => {
+    // Otherwise the ✕ is a back door into exactly the state the Metric
+    // sheet disables — a price summed across every instrument you hold.
+    for (const metric of ["share_count", "market_price"] as const) {
+      const next = clearInstrument(state({ instrumentId: "goog", metric }));
+
+      expect(next.metric).toBe("equity");
+    }
+  });
+
   test("everything else is carried through untouched, so Undo has something to restore", () => {
     const before = state({
       instrumentId: "goog",
@@ -173,38 +213,13 @@ describe("clearing a chip", () => {
       metric: "cost_basis",
       rangeKey: "3M",
       granularity: "weekly",
+      customRange: { start: "2026-01-01", end: "2026-03-01" },
       tab: "accounts",
       cumulative: true,
     });
 
     expect(clearInstrument(before)).toEqual({ ...before, instrumentId: null });
     expect(clearAccount(before)).toEqual({ ...before, accountId: null });
-  });
-});
-
-describe("metric dimensions", () => {
-  test("cash_balance has no instrument dimension", () => {
-    expect(metricHasInstrumentDimension("cash_balance")).toBe(false);
-    expect(metricHasInstrumentDimension("equity")).toBe(true);
-  });
-
-  test("market_price has no account dimension", () => {
-    expect(metricHasAccountDimension("market_price")).toBe(false);
-    expect(metricHasAccountDimension("equity")).toBe(true);
-  });
-
-  test("every metric has a label", () => {
-    for (const metric of [
-      "equity",
-      "cash_balance",
-      "unrealized_gain",
-      "realized_gain",
-      "cost_basis",
-      "share_count",
-      "market_price",
-    ] as const) {
-      expect(metricLabel(metric).length).toBeGreaterThan(0);
-    }
   });
 });
 

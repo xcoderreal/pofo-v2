@@ -15,9 +15,15 @@
  */
 
 import type { components } from "./api-types";
+import {
+  metricHasAccountDimension,
+  metricHasInstrumentDimension,
+  repairMetricForScope,
+  type Metric,
+} from "./metrics";
 import type { Granularity, RangeKey } from "./timeseries";
 
-export type Metric = components["schemas"]["Metric"];
+export type { Metric };
 
 /** Which list the portfolio level is showing. Only meaningful at that
  * level: every narrower level has exactly one list. */
@@ -45,6 +51,10 @@ export interface ViewState extends Scope {
   /** null = whatever `autoGranularity` picks for the resolved span. An
    * explicit choice is per-range and is dropped when the range changes. */
   granularity: Granularity | null;
+  /** Explicit bounds for `rangeKey: "Custom"`, as `YYYY-MM-DD`. Kept as
+   * plain strings so a `ViewState` stays comparable and snapshottable —
+   * two `Date` objects for the same day are never `===`. */
+  customRange: { start: string; end: string } | null;
   tab: ListTab;
   /** `realized_gain`'s per-period vs cumulative toggle (#19). Carried
    * here because Undo has to restore it even though nothing sets it yet. */
@@ -57,6 +67,7 @@ export const INITIAL_VIEW_STATE: ViewState = {
   metric: "equity",
   rangeKey: "1Y",
   granularity: null,
+  customRange: null,
   tab: "holdings",
   cumulative: false,
 };
@@ -76,45 +87,6 @@ export function resolveLevel(scope: Scope): Level {
   if (scope.instrumentId !== null) return "instrument";
   if (scope.accountId !== null) return "account";
   return "portfolio";
-}
-
-// ─── Metric dimensions ────────────────────────────────────────
-// The query interface rejects a scope dimension a metric doesn't have —
-// deliberately, "rather than silently ignoring it" (docs/domain-model.md
-// § Query interface). So the client has to know which dimensions each
-// metric carries before it builds a request. Acting on a mismatch by
-// clearing a chip is #18's job; not *sending* the impossible filter is
-// this module's.
-
-const NO_INSTRUMENT_DIMENSION: readonly Metric[] = ["cash_balance"];
-const NO_ACCOUNT_DIMENSION: readonly Metric[] = ["market_price"];
-
-export function metricHasInstrumentDimension(metric: Metric): boolean {
-  return !NO_INSTRUMENT_DIMENSION.includes(metric);
-}
-
-export function metricHasAccountDimension(metric: Metric): boolean {
-  return !NO_ACCOUNT_DIMENSION.includes(metric);
-}
-
-/** Header label for a metric, as the design writes it. */
-export function metricLabel(metric: Metric): string {
-  switch (metric) {
-    case "equity":
-      return "Equity value";
-    case "cash_balance":
-      return "Cash balance";
-    case "unrealized_gain":
-      return "Unrealized gain";
-    case "realized_gain":
-      return "Realized gain";
-    case "cost_basis":
-      return "Cost basis";
-    case "share_count":
-      return "Share count";
-    case "market_price":
-      return "Market price";
-  }
 }
 
 /**
@@ -177,13 +149,22 @@ export function selectInstrument(
  * Auto-adjustment 1 (behaviour.md § Auto-adjustments): an account holding
  * no instruments has a flat zero under every holdings metric, so the
  * metric switches to `cash_balance` — the only thing that account has to
- * say.
+ * say. Only with no instrument in scope, though: `cash_balance` has no
+ * instrument dimension, so firing it at slice level would build the very
+ * query auto-adjustment 4 exists to prevent, *and* would answer a
+ * different question than the one the instrument chip is asking.
  *
  * The converse is the prototype's own repair in `gotoAcct` and is kept:
  * arriving at an account that *does* hold instruments while on
  * `cash_balance` switches back to `equity`. Without it, one visit to a
  * cash-only account would leave every later account showing its cash
- * balance with no way back until the metric sheet lands in #18.
+ * balance with no way back.
+ *
+ * The first repair is the mirror of auto-adjustment 2 and #18's Accounts
+ * sheet is what made it reachable: `market_price` has no account
+ * dimension, so picking an account while on it is a query the API rejects
+ * outright. Silent, like its counterpart — the alternative is refusing a
+ * selection the user can see is legitimate.
  */
 export function selectAccount(
   state: ViewState,
@@ -191,7 +172,14 @@ export function selectAccount(
   options: { holdsInstruments: boolean },
 ): ViewState {
   let metric = state.metric;
-  if (!options.holdsInstruments && HOLDING_METRICS.includes(metric)) {
+  if (!metricHasAccountDimension(metric)) {
+    metric = "equity";
+  }
+  if (
+    state.instrumentId === null &&
+    !options.holdsInstruments &&
+    HOLDING_METRICS.includes(metric)
+  ) {
     metric = "cash_balance";
   } else if (options.holdsInstruments && metric === "cash_balance") {
     metric = "equity";
@@ -204,9 +192,15 @@ export function selectAccount(
  *
  * The level follows from the scope, so there is nothing else to unwind.
  * The caller is what raises the Undo toast — see `useViewState`.
+ *
+ * `repairMetricForScope` covers the one case where dropping the chip is
+ * not enough: `share_count` and `market_price` are a single instrument's
+ * properties, and the Metric sheet refuses to offer them without one. A
+ * chip dismissal must not be a back door into the state the sheet is
+ * guarding.
  */
 export function clearInstrument(state: ViewState): ViewState {
-  return { ...state, instrumentId: null };
+  return repairMetricForScope({ ...state, instrumentId: null });
 }
 
 /** Dismiss the account chip. slice → instrument, account → portfolio. */

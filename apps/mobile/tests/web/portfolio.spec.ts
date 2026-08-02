@@ -52,11 +52,14 @@ test("granularity follows the selected range's span", async ({ page }) => {
   await page.goto("/");
   await page.waitForLoadState("networkidle");
 
+  // The chip carries a disclosure caret alongside the label (#18 made it
+  // the Granularity sheet's trigger), so this reads the label, not the
+  // whole node.
   await page.getByTestId("range-1W").click();
-  await expect(page.getByTestId("granularity-chip")).toHaveText("Daily");
+  await expect(page.getByTestId("granularity-chip")).toContainText("Daily");
 
   await page.getByTestId("range-1Y").click();
-  await expect(page.getByTestId("granularity-chip")).toHaveText("Monthly");
+  await expect(page.getByTestId("granularity-chip")).toContainText("Monthly");
 });
 
 test("the mode slot is reserved so the control row does not reflow", async ({

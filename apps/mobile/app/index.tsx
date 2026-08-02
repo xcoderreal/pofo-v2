@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -10,7 +10,9 @@ import {
 } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { AccountBreakdownList } from "@/components/AccountBreakdownList";
+import { DateRangeSheet } from "@/components/DateRangeSheet";
 import { InstrumentStatCard } from "@/components/InstrumentStatCard";
+import { OptionSheet, type SheetOption } from "@/components/OptionSheet";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { PositionsList } from "@/components/PositionsList";
 import { ScopeChips } from "@/components/ScopeChips";
@@ -26,14 +28,22 @@ import {
   buildChips,
   clearAccount,
   clearInstrument,
-  metricLabel,
   scopeParams,
   selectAccount,
   selectInstrument,
   type ListTab,
   type ScopeChip,
 } from "@/lib/drilldown";
-import { formatSigned, formatUsd } from "@/lib/format";
+import { formatSigned } from "@/lib/format";
+import {
+  buildMetricOptions,
+  formatMetricValue,
+  metricKind,
+  metricLabel,
+  metricMode,
+  resolveMetricChoice,
+  type Metric,
+} from "@/lib/metrics";
 import {
   accountHoldsInstruments,
   addSeries,
@@ -47,17 +57,30 @@ import {
 } from "@/lib/positions";
 import {
   autoGranularity,
+  bucketNoun,
+  buildGranularityOptions,
+  fromApiDate,
   RANGE_KEYS,
   rangeLabel,
   resolveRange,
   toApiDate,
   validGranularities,
+  type Granularity,
 } from "@/lib/timeseries";
 import { signalColors } from "@/utils/theme";
 
-/** Ranges the control row offers directly. "Custom" is reached from the
- * granularity/settings sheet rather than as an eighth pill (#14). */
-const PILL_RANGES = RANGE_KEYS.filter((k) => k !== "Custom");
+/** Every range is a pill, including Custom — behaviour.md lists it
+ * alongside the rest. Custom is the one that opens a sheet instead of
+ * applying immediately, because it has bounds to collect first. */
+const PILL_RANGES = RANGE_KEYS;
+
+/** Which bottom sheet is open, if any. One slot: they are all modal, so
+ * two at once is not a state worth representing. */
+type SheetKind = "metric" | "granularity" | "accounts" | "custom";
+
+/** The Accounts sheet's "no account filter" row. Not an account id, so it
+ * cannot collide with one. */
+const WHOLE_PORTFOLIO = "__all__";
 
 /** Below this, an account's cash is rounding dust rather than a balance
  * worth its own row — the prototype's own threshold. */
@@ -73,14 +96,28 @@ export default function PortfolioScreen() {
   // "one instrument in one account" (behaviour.md § Navigation and scope).
   const view = useViewState();
   const { state, level } = view;
+  const [sheet, setSheet] = useState<SheetKind | null>(null);
 
   // A single "today" for the render, so the resolved range and every
   // label derived from it agree with each other.
   const today = useMemo(() => new Date(), []);
-  const resolved = useMemo(
-    () => resolveRange(state.rangeKey, today),
-    [state.rangeKey, today],
-  );
+  const resolved = useMemo(() => {
+    // `resolveRange` throws on Custom without bounds, and a screen that
+    // can throw on a state transition is not a screen. The two always
+    // move together (the Custom sheet sets both), so this is a guard
+    // rather than a branch anyone reaches.
+    if (state.rangeKey === "Custom" && state.customRange === null) {
+      return resolveRange("1Y", today);
+    }
+    return resolveRange(state.rangeKey, today, {
+      custom: state.customRange
+        ? {
+            start: fromApiDate(state.customRange.start),
+            end: fromApiDate(state.customRange.end),
+          }
+        : null,
+    });
+  }, [state.rangeKey, state.customRange, today]);
   const granularity =
     state.granularity &&
     validGranularities(resolved.spanDays).includes(state.granularity)
@@ -119,10 +156,13 @@ export default function PortfolioScreen() {
     [positions.data, state.accountId, state.instrumentId],
   );
 
+  // A Level is queried at an instant and a Flow over an interval; the API
+  // rejects the wrong pairing (docs/domain-model.md § (Metric, Mode)
+  // validity), so the mode follows the metric rather than being fixed.
   const series = usePortfolioSeries({
     metric: state.metric,
     ...rangeWindow,
-    mode: "point_in_time",
+    mode: metricMode(state.metric, state.cumulative),
     groupBy: "none",
     ...scopeParams(state),
   });
@@ -269,7 +309,8 @@ export default function PortfolioScreen() {
     [state, view],
   );
   const onSelectAccount = useCallback(
-    (accountId: string) =>
+    (accountId: string) => {
+      setSheet(null);
       view.update(
         selectAccount(state, accountId, {
           holdsInstruments: accountHoldsInstruments({
@@ -278,7 +319,8 @@ export default function PortfolioScreen() {
             accountId,
           }),
         }),
-      ),
+      );
+    },
     [state, view, positions.data, instruments.data],
   );
   const onSelectTab = useCallback(
@@ -295,6 +337,105 @@ export default function PortfolioScreen() {
         ? view.updateWithUndo("Instrument filter removed", clearInstrument(state))
         : view.updateWithUndo("Account filter removed", clearAccount(state)),
     [state, view],
+  );
+
+  /**
+   * Pick a metric, resolving any metric/scope conflict on the way in.
+   *
+   * The resolver is total, so there is no failure path here: a metric that
+   * needs an instrument you don't have never reaches this callback (its
+   * row is disabled), and a metric that can't use a chip you do have
+   * arrives with that chip already dropped and a message to offer it back
+   * (docs/adr/0001-dashboard-v2.md § 6).
+   */
+  const onSelectMetric = useCallback(
+    (metric: Metric) => {
+      const choice = resolveMetricChoice(state, metric);
+      setSheet(null);
+      if (!choice.selectable) return;
+      if (choice.undoMessage === null) {
+        view.update(choice.next);
+      } else {
+        view.updateWithUndo(choice.undoMessage, choice.next);
+      }
+    },
+    [state, view],
+  );
+
+  const onSelectGranularity = useCallback(
+    (next: Granularity) => {
+      setSheet(null);
+      view.update({ ...state, granularity: next });
+    },
+    [state, view],
+  );
+
+  const onSelectWholePortfolio = useCallback(() => {
+    setSheet(null);
+    if (state.accountId === null) return;
+    view.updateWithUndo("Account filter removed", clearAccount(state));
+  }, [state, view]);
+
+  const onApplyCustomRange = useCallback(
+    (customRange: { start: string; end: string }) => {
+      setSheet(null);
+      // A granularity chosen for the old span may be too coarse for this
+      // one; null re-derives it from the new span.
+      view.update({
+        ...state,
+        rangeKey: "Custom",
+        customRange,
+        granularity: null,
+      });
+    },
+    [state, view],
+  );
+
+  // ─── Sheet rows ─────────────────────────────────────────────
+
+  const metricOptions = useMemo<SheetOption[]>(
+    () =>
+      buildMetricOptions(state).map((option) => ({
+        key: option.metric,
+        label: option.label,
+        note: option.note,
+        selected: option.selected,
+        disabled: option.disabled,
+      })),
+    [state],
+  );
+
+  const granularityOptions = useMemo<SheetOption[]>(
+    () =>
+      buildGranularityOptions({
+        spanDays: resolved.spanDays,
+        granularity: state.granularity,
+      }).map((option) => ({
+        key: option.granularity,
+        label: option.label,
+        note: option.note,
+        selected: option.selected,
+        disabled: option.disabled,
+      })),
+    [resolved.spanDays, state.granularity],
+  );
+
+  const accountOptions = useMemo<SheetOption[]>(
+    () => [
+      {
+        key: WHOLE_PORTFOLIO,
+        label: "Whole portfolio",
+        note: `All ${(accounts.data ?? []).length} accounts combined`,
+        selected: state.accountId === null,
+      },
+      ...(accounts.data ?? []).map((account) => ({
+        key: account.id,
+        label: account.name,
+        note: `${account.institution} · ${account.account_type}`,
+        selected: state.accountId === account.id,
+      })),
+    ],
+    [accounts.data, state.accountId],
   );
 
   const chips = useMemo(
@@ -341,11 +482,27 @@ export default function PortfolioScreen() {
     }));
   }, [series.data]);
 
+  // `realized_gain` is the only Flow: its headline is the total booked
+  // across the visible range, and its sub-line reports the range and
+  // bucket count — a percentage against a flow's first bucket is
+  // meaningless (behaviour.md § Metrics). The bars and the per-period /
+  // cumulative toggle are #19; this is the line-shaped version of it.
+  const isFlow = metricKind(state.metric) === "flow";
   const latest = points.length ? points[points.length - 1].value : 0;
   const opening = points.length ? points[0].value : 0;
+  const booked = points.reduce((total, point) => total + point.value, 0);
+  const headline = isFlow
+    ? formatSigned(state.cumulative ? latest : booked)
+    : formatMetricValue(state.metric, latest);
   const change = latest - opening;
   const pctChange = opening === 0 ? null : (change / Math.abs(opening)) * 100;
-  const changeColor = change >= 0 ? signalColors.up : signalColors.down;
+  const changeColor = isFlow
+    ? (state.cumulative ? latest : booked) >= 0
+      ? signalColors.up
+      : signalColors.down
+    : change >= 0
+      ? signalColors.up
+      : signalColors.down;
 
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
@@ -356,13 +513,29 @@ export default function PortfolioScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.content}
       >
-        <Text testID="metric-label" style={styles.metricLabel}>
-          {`${metricLabel(state.metric)}${
-            level === "portfolio" ? " · whole portfolio" : ""
-          }`.toUpperCase()}
-        </Text>
+        <Pressable
+          testID="metric-button"
+          accessibilityRole="button"
+          onPress={() => setSheet("metric")}
+          style={styles.metricButton}
+        >
+          <Text testID="metric-label" style={styles.metricLabel}>
+            {`${metricLabel(state.metric)}${
+              isFlow
+                ? " · booked in range"
+                : level === "portfolio"
+                  ? " · whole portfolio"
+                  : ""
+            }`.toUpperCase()}
+          </Text>
+          <Text style={styles.metricCaret}>⌄</Text>
+        </Pressable>
 
-        <ScopeChips chips={chips} onClear={onClearChip} />
+        <ScopeChips
+          chips={chips}
+          onClear={onClearChip}
+          onOpenAccounts={() => setSheet("accounts")}
+        />
 
         {accountIsEmpty ? (
           <View testID="account-empty" style={styles.emptyState}>
@@ -384,14 +557,17 @@ export default function PortfolioScreen() {
         ) : (
           <>
             <Text testID="big-value" style={styles.bigValue}>
-              {formatUsd(latest)}
+              {headline}
             </Text>
             <View style={styles.deltaRow}>
               <Text testID="delta" style={[styles.delta, { color: changeColor }]}>
-                {formatSigned(change)}
-                {pctChange === null
-                  ? ""
-                  : `  ${pctChange >= 0 ? "+" : "−"}${Math.abs(pctChange).toFixed(2)}%`}
+                {isFlow
+                  ? `${points.length} ${bucketNoun(granularity)} buckets`
+                  : `${formatSigned(change)}${
+                      pctChange === null
+                        ? ""
+                        : `  ${pctChange >= 0 ? "+" : "−"}${Math.abs(pctChange).toFixed(2)}%`
+                    }`}
               </Text>
               <Text testID="range-label" style={styles.rangeLabel}>
                 {rangeLabel(state.rangeKey)}
@@ -423,9 +599,18 @@ export default function PortfolioScreen() {
                   testID={`range-${key}`}
                   accessibilityState={{ selected: active }}
                   onPress={() =>
-                    // An explicit granularity is per-range; a new range
-                    // gets the default for its own span.
-                    view.update({ ...state, rangeKey: key, granularity: null })
+                    key === "Custom"
+                      ? // Custom has bounds to collect before it means
+                        // anything, so the pill opens a sheet rather than
+                        // applying a range that doesn't exist yet.
+                        setSheet("custom")
+                      : // An explicit granularity is per-range; a new range
+                        // gets the default for its own span.
+                        view.update({
+                          ...state,
+                          rangeKey: key,
+                          granularity: null,
+                        })
                   }
                   style={[styles.pill, active && styles.pillActive]}
                 >
@@ -438,11 +623,17 @@ export default function PortfolioScreen() {
               );
             })}
 
-            <View testID="granularity-chip" style={styles.granularityChip}>
+            <Pressable
+              testID="granularity-chip"
+              accessibilityRole="button"
+              onPress={() => setSheet("granularity")}
+              style={styles.granularityChip}
+            >
               <Text style={styles.granularityText}>
                 {granularity.charAt(0).toUpperCase() + granularity.slice(1)}
               </Text>
-            </View>
+              <Text style={styles.granularityCaret}>⌄</Text>
+            </Pressable>
 
             {/* Reserved slot for the Per period / Cumulative toggle that
                 arrives with realized gain (#19). Present but empty, so
@@ -522,6 +713,45 @@ export default function PortfolioScreen() {
           onDismiss={view.dismissToast}
         />
       ) : null}
+
+      {sheet === "metric" ? (
+        <OptionSheet
+          testID="metric-sheet"
+          title="Metric"
+          subtitle="Applies to the chart and the headline. Options that need an instrument you haven't picked are shown, not hidden."
+          options={metricOptions}
+          onSelect={(key) => onSelectMetric(key as Metric)}
+          onClose={() => setSheet(null)}
+        />
+      ) : sheet === "granularity" ? (
+        <OptionSheet
+          testID="granularity-sheet"
+          title="Granularity"
+          subtitle="The range stays as it is. Only buckets the span can fill are selectable."
+          options={granularityOptions}
+          onSelect={(key) => onSelectGranularity(key as Granularity)}
+          onClose={() => setSheet(null)}
+        />
+      ) : sheet === "accounts" ? (
+        <OptionSheet
+          testID="accounts-sheet"
+          title="Accounts"
+          subtitle="Pick one, or stay on the whole portfolio."
+          options={accountOptions}
+          onSelect={(key) =>
+            key === WHOLE_PORTFOLIO
+              ? onSelectWholePortfolio()
+              : onSelectAccount(key)
+          }
+          onClose={() => setSheet(null)}
+        />
+      ) : sheet === "custom" ? (
+        <DateRangeSheet
+          initial={state.customRange}
+          onApply={onApplyCustomRange}
+          onClose={() => setSheet(null)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -531,11 +761,21 @@ function makeStyles(theme: ReturnType<typeof useTheme>) {
     screen: { flex: 1, backgroundColor: theme.colors.background },
     scroll: { flex: 1 },
     content: { paddingTop: theme.spacing.xl, paddingBottom: theme.spacing.xl },
+    metricButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      gap: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.lg,
+    },
     metricLabel: {
       color: theme.colors.textSecondary,
       fontSize: theme.fontSize.xs,
       letterSpacing: 1,
-      paddingHorizontal: theme.spacing.lg,
+    },
+    metricCaret: {
+      color: theme.colors.textTertiary,
+      fontSize: theme.fontSize.xs,
     },
     bigValue: {
       color: theme.colors.text,
@@ -607,6 +847,9 @@ function makeStyles(theme: ReturnType<typeof useTheme>) {
     },
     pillTextActive: { color: theme.colors.primaryText },
     granularityChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.xs,
       marginLeft: theme.spacing.sm,
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.sm,
@@ -616,6 +859,10 @@ function makeStyles(theme: ReturnType<typeof useTheme>) {
     granularityText: {
       color: theme.colors.text,
       fontSize: theme.fontSize.sm,
+    },
+    granularityCaret: {
+      color: theme.colors.textTertiary,
+      fontSize: theme.fontSize.xs,
     },
     // Width matches the toggle that lands in #19, so its arrival is a
     // fill, not a reflow.

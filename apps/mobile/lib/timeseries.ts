@@ -156,6 +156,122 @@ export function toApiDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * One row of the Granularity sheet.
+ *
+ * Granularity is keyed on the *resolved span*, never the range key's name
+ * (behaviour.md § Ranges and granularity), so "Max" and "Custom" get
+ * correct options for free — and so the sheet's disabled reasons say
+ * "range" rather than naming a key that may not describe the span.
+ */
+export interface GranularityOption {
+  granularity: Granularity;
+  label: string;
+  note: string;
+  selected: boolean;
+  disabled: boolean;
+}
+
+const BUCKET_NOTE: Record<Granularity, string> = {
+  daily: "One point per day",
+  weekly: "One point per week",
+  monthly: "One point per month",
+  yearly: "One point per year",
+};
+
+export function buildGranularityOptions(args: {
+  spanDays: number;
+  /** The explicit override, or null for whatever the span auto-selects. */
+  granularity: Granularity | null;
+}): GranularityOption[] {
+  const auto = autoGranularity(args.spanDays);
+  const current = args.granularity ?? auto;
+
+  return GRANULARITIES.map((granularity) => {
+    const valid = isGranularityValid(granularity, args.spanDays);
+    return {
+      granularity,
+      label: granularity.charAt(0).toUpperCase() + granularity.slice(1),
+      note: !valid
+        ? "Too coarse for the selected range"
+        : granularity === auto
+          ? "Default for this range"
+          : BUCKET_NOTE[granularity],
+      selected: granularity === current,
+      disabled: !valid,
+    };
+  });
+}
+
+/** What one bucket of a granularity is called, for "12 week buckets".
+ * Not `granularity.replace("ly", "")`, which is where the prototype's
+ * "dai buckets" comes from. */
+export function bucketNoun(granularity: Granularity): string {
+  switch (granularity) {
+    case "daily":
+      return "day";
+    case "weekly":
+      return "week";
+    case "monthly":
+      return "month";
+    case "yearly":
+      return "year";
+  }
+}
+
+// ─── Custom range ─────────────────────────────────────────────
+
+export type CustomRangeResult =
+  | { ok: true; start: string; end: string }
+  | { ok: false; reason: string };
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Real calendar day? `new Date("2026-02-31")` rolls into March rather
+ * than failing, so the round-trip is the check. */
+function isRealDate(text: string): boolean {
+  if (!ISO_DATE.test(text)) return false;
+  const parsed = new Date(`${text}T00:00:00Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === text
+  );
+}
+
+/**
+ * Validate the Custom range sheet's two fields.
+ *
+ * Pure, so "what does an empty end date say?" is a unit test rather than a
+ * screenshot. A range is only ever committed to `ViewState` once this says
+ * `ok` — `resolveRange("Custom", …)` throws without bounds, and a screen
+ * that can throw on a typo is not a screen.
+ */
+export function parseCustomRange(
+  startText: string,
+  endText: string,
+): CustomRangeResult {
+  const start = startText.trim();
+  const end = endText.trim();
+
+  if (start === "" || end === "") {
+    return { ok: false, reason: "Enter both dates as YYYY-MM-DD" };
+  }
+  if (!isRealDate(start) || !isRealDate(end)) {
+    return { ok: false, reason: "Dates must be real days, as YYYY-MM-DD" };
+  }
+  if (start > end) {
+    return { ok: false, reason: "The start date must come first" };
+  }
+  return { ok: true, start, end };
+}
+
+/** `YYYY-MM-DD` back to a local-midnight `Date`, the inverse of
+ * `toApiDate`. The `T00:00:00` matters: bare `new Date("2026-01-01")` is
+ * parsed as UTC and can land on the previous day. */
+export function fromApiDate(text: string): Date {
+  return new Date(`${text}T00:00:00`);
+}
+
 /** Human label under the headline figure, e.g. "past 1 year". */
 export function rangeLabel(key: RangeKey): string {
   switch (key) {
