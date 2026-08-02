@@ -12,8 +12,9 @@
  *    `group_by` single-valued (docs/adr/0001-dashboard-v2.md § 5).
  * 2. **The percentage.** Row percentages are *range-scoped*, not
  *    lifetime: they move with the range pill exactly as the header figure
- *    does. A position that did not exist at the start of the range has no
- *    denominator and renders a dash
+ *    does — `changePercent` is the single rule both go through. A row
+ *    with no honest pair of endpoints renders a dash rather than a
+ *    fabricated number
  *    (docs/design/dashboard_v2/behaviour.md § Percentages).
  */
 
@@ -130,38 +131,98 @@ export function addSeries(
     .sort((x, y) => (x.timestamp < y.timestamp ? -1 : 1));
 }
 
-// ─── The range-scoped row percentage ─────────────────────────
+/**
+ * "Account value including cash", per account, from the two grouped
+ * series that carry it.
+ *
+ * Two queries rather than one because `equity` deliberately excludes CASH
+ * so the two can be added without double-counting
+ * (docs/adr/0001-dashboard-v2.md § 3) — which makes recombining them a
+ * pivot, and pivots live here beside the others rather than inline in a
+ * screen.
+ *
+ * The union of both key sets, not either one alone: a cash-only account
+ * appears in `cash` and not in `equity`, and a fully-invested one the
+ * other way round.
+ */
+export function combineAccountSeries(
+  equity: Record<string, RangePoint[]>,
+  cash: Record<string, RangePoint[]>,
+): Record<string, RangePoint[]> {
+  const combined: Record<string, RangePoint[]> = {};
+  for (const id of new Set([...Object.keys(equity), ...Object.keys(cash)])) {
+    combined[id] = addSeries(equity[id], cash[id]);
+  }
+  return combined;
+}
+
+// ─── The range-scoped percentage ─────────────────────────────
+
+/**
+ * The one percentage rule on this screen: change across a window,
+ * measured against the magnitude of where it opened.
+ *
+ * The magnitude matters — `unrealized_gain` opens negative often enough,
+ * and a loss shrinking from −100 to −50 is a *rise*, not a −50% fall.
+ *
+ * `null` where no percentage exists, which the UI renders as a dash: a
+ * zero opening has no percentage rather than an infinite one, and a
+ * fabricated `0.00%` would read as "unchanged" (behaviour.md
+ * § Percentages).
+ *
+ * Both the headline figure and every list row go through here. They used
+ * to carry a copy each, `Math.abs` denominator and all — two copies of
+ * the rule this module exists to hold once.
+ */
+export function changePercent(opening: number, closing: number): number | null {
+  if (!Number.isFinite(opening) || !Number.isFinite(closing)) return null;
+  if (opening === 0) return null;
+  return ((closing - opening) / Math.abs(opening)) * 100;
+}
 
 /**
  * Percentage change in a row's value across the selected range.
  *
  * Returns `null` — rendered as a dash — in every case where there is no
- * honest denominator:
+ * honest pair of endpoints:
  *
  * - the row has no current value (its price hasn't been fetched yet);
+ * - **the range does not end today.** `/portfolio/positions` takes no
+ *   date, so `currentValue` is always *today's* — which is the range end
+ *   only while the range ends today. On a Custom range ending in the past
+ *   the header measures first → last of that window while a row would be
+ *   measuring rangeStart → today: two percentages that look identical,
+ *   sit inches apart and mean different things. That is precisely the
+ *   defect behaviour.md § Percentages was written to kill, so the row
+ *   says nothing rather than saying something else;
  * - the row's series has no sample at or before the range start. The
  *   backend's first sample boundary *is* the range start, and a row's
  *   series only begins at that position's first activity — so nothing at
  *   or before the start means the position was opened inside the range.
- *   There is nothing to compare against, and a `0.00%` would read as
- *   "unchanged";
+ *   There is nothing to compare against;
  * - the opening value is zero, which no percentage can be taken against.
  *
  * The opening is looked up by timestamp rather than taken as `points[0]`,
  * so it stays correct if a caller ever hands over a series wider than the
  * range it is asking about.
  */
-export function rowChangePercent(
-  currentValue: number | null,
-  points: readonly RangePoint[] | undefined,
-  rangeStart: string,
-): number | null {
+export function rowChangePercent(args: {
+  /** The row's value *now*, from the batched positions endpoint. */
+  currentValue: number | null;
+  /** The row's own range-scoped series — the denominator's source. */
+  points: readonly RangePoint[] | undefined;
+  rangeStart: string;
+  /** Whether `currentValue` is also the range's *end* value, i.e. whether
+   * the selected range runs to today. */
+  currentValueIsRangeEnd: boolean;
+}): number | null {
+  const { currentValue, points, rangeStart, currentValueIsRangeEnd } = args;
+  if (!currentValueIsRangeEnd) return null;
   if (currentValue === null || !Number.isFinite(currentValue)) return null;
   const atOrBefore = (points ?? []).filter((p) => p.timestamp <= rangeStart);
   const opening = atOrBefore[atOrBefore.length - 1];
   if (!opening) return null;
-  if (!Number.isFinite(opening.value) || opening.value === 0) return null;
-  return ((currentValue - opening.value) / Math.abs(opening.value)) * 100;
+  return changePercent(opening.value, currentValue);
 }
 
 // ─── Pivots ───────────────────────────────────────────────────
@@ -188,6 +249,8 @@ export function buildHoldingRows(args: {
   instruments: readonly InstrumentSummary[] | undefined;
   pointsByInstrument: Record<string, RangePoint[]>;
   rangeStart: string;
+  /** See `rowChangePercent` — false suppresses the percentage entirely. */
+  currentValueIsRangeEnd: boolean;
 }): HoldingRow[] {
   const { positions, instruments, pointsByInstrument, rangeStart } = args;
   const catalog = new Map((instruments ?? []).map((i) => [i.id, i]));
@@ -221,11 +284,12 @@ export function buildHoldingRows(args: {
       shareCount: acc.shareCount,
       marketValue: acc.marketValue,
       realizedGain: acc.realizedGain,
-      changePercent: rowChangePercent(
-        acc.marketValue,
-        pointsByInstrument[instrumentId],
+      changePercent: rowChangePercent({
+        currentValue: acc.marketValue,
+        points: pointsByInstrument[instrumentId],
         rangeStart,
-      ),
+        currentValueIsRangeEnd: args.currentValueIsRangeEnd,
+      }),
     }))
     .sort((a, b) => (b.marketValue ?? -1) - (a.marketValue ?? -1));
 }
@@ -242,6 +306,8 @@ export function buildAccountRows(args: {
   accounts: readonly AccountSummary[] | undefined;
   pointsByAccount: Record<string, RangePoint[]>;
   rangeStart: string;
+  /** See `rowChangePercent` — false suppresses the percentage entirely. */
+  currentValueIsRangeEnd: boolean;
 }): AccountRow[] {
   const { positions, accounts, pointsByAccount, rangeStart } = args;
 
@@ -269,11 +335,12 @@ export function buildAccountRows(args: {
         name: account.name,
         accountType: accountTypeLabel(account.account_type),
         value,
-        changePercent: rowChangePercent(
-          value,
-          pointsByAccount[account.id],
+        changePercent: rowChangePercent({
+          currentValue: value,
+          points: pointsByAccount[account.id],
           rangeStart,
-        ),
+          currentValueIsRangeEnd: args.currentValueIsRangeEnd,
+        }),
       };
     })
     .sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
@@ -296,6 +363,8 @@ export function buildInstrumentAccountRows(args: {
   instrumentId: string;
   pointsByAccount: Record<string, RangePoint[]>;
   rangeStart: string;
+  /** See `rowChangePercent` — false suppresses the percentage entirely. */
+  currentValueIsRangeEnd: boolean;
 }): InstrumentAccountRow[] {
   const { positions, accounts, instrumentId, pointsByAccount, rangeStart } = args;
   const catalog = new Map((accounts ?? []).map((a) => [a.id, a]));
@@ -315,11 +384,12 @@ export function buildInstrumentAccountRows(args: {
           row.average_cost === null ? null : Number(row.average_cost),
         marketValue,
         realizedGain: Number(row.realized_gain),
-        changePercent: rowChangePercent(
-          marketValue,
-          pointsByAccount[row.account_id],
+        changePercent: rowChangePercent({
+          currentValue: marketValue,
+          points: pointsByAccount[row.account_id],
           rangeStart,
-        ),
+          currentValueIsRangeEnd: args.currentValueIsRangeEnd,
+        }),
       };
     })
     .sort((a, b) => (b.marketValue ?? -1) - (a.marketValue ?? -1));
@@ -427,13 +497,19 @@ export function accountHoldsInstruments(args: {
  * A closed position — zero shares, but realized gain booked — is not a
  * holding any more, and mixing it into the live list makes every total
  * look wrong. It gets its own collapsed disclosure instead.
+ *
+ * "But with realized gain" is load-bearing, not decoration: a round trip
+ * at cost leaves zero shares *and* zero booked, and filing that under
+ * "Closed positions · 1 … realized +$0.00" advertises a disclosure with
+ * nothing inside it. Such a row belongs to neither list and is dropped —
+ * the position is over and it made no difference.
  */
-export function splitClosed<T extends { shareCount: number }>(
+export function splitClosed<T extends { shareCount: number; realizedGain: number }>(
   rows: readonly T[],
 ): { live: T[]; closed: T[] } {
   return {
     live: rows.filter((r) => r.shareCount !== 0),
-    closed: rows.filter((r) => r.shareCount === 0),
+    closed: rows.filter((r) => r.shareCount === 0 && r.realizedGain !== 0),
   };
 }
 

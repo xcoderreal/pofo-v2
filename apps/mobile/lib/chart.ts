@@ -170,11 +170,23 @@ export function buildBars(
 
   const bars = points.map((point, i) => {
     const top = y(point.value);
+    const height = Math.max(MIN_BAR_HEIGHT, Math.abs(zeroY - top));
     return {
       x: clamp(xs[i] - barWidth / 2, 0, Math.max(0, width - barWidth)),
-      y: Math.min(top, zeroY),
+      // Anchored to the baseline by *sign*, not by `Math.min(top, zeroY)`:
+      // a bucket of exactly zero has `top === zeroY`, so taking the min
+      // put its whole MIN_BAR_HEIGHT tick below the line — a nothing
+      // bucket drawn as a small loss. Zero straddles instead. For every
+      // other value this is the identical result, since a positive bar's
+      // top *is* `zeroY - height` and a negative bar's top is `zeroY`.
+      y:
+        point.value === 0
+          ? zeroY - height / 2
+          : point.value > 0
+            ? zeroY - height
+            : zeroY,
       width: barWidth,
-      height: Math.max(MIN_BAR_HEIGHT, Math.abs(zeroY - top)),
+      height,
       positive: point.value >= 0,
     };
   });

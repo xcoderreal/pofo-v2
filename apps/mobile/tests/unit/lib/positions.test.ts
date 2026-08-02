@@ -7,6 +7,8 @@ import {
   buildInstrumentAccountRows,
   buildInstrumentStats,
   cashBalanceFor,
+  changePercent,
+  combineAccountSeries,
   pointsByGroup,
   rowChangePercent,
   splitClosed,
@@ -50,14 +52,44 @@ const ACCOUNTS = [
   },
 ] as const;
 
+describe("changePercent — the one range-percentage rule", () => {
+  test("is signed against the magnitude of the opening value", () => {
+    expect(changePercent(1000, 1300)).toBeCloseTo(30, 10);
+    expect(changePercent(-100, -50)).toBeCloseTo(50, 10);
+  });
+
+  test("a zero opening has no percentage, not an infinite one", () => {
+    expect(changePercent(0, 600)).toBeNull();
+  });
+
+  test("non-finite inputs have no percentage", () => {
+    expect(changePercent(Number.NaN, 600)).toBeNull();
+    expect(changePercent(1000, Number.POSITIVE_INFINITY)).toBeNull();
+  });
+});
+
 describe("rowChangePercent — the range-scoped row percentage", () => {
+  function pct(
+    currentValue: number | null,
+    points: { timestamp: string; value: number }[] | undefined,
+    rangeStart = RANGE_START,
+    currentValueIsRangeEnd = true,
+  ) {
+    return rowChangePercent({
+      currentValue,
+      points,
+      rangeStart,
+      currentValueIsRangeEnd,
+    });
+  }
+
   test("measures the change from the range's opening value", () => {
     const points = [
       { timestamp: "2026-01-01", value: 1000 },
       { timestamp: "2026-02-01", value: 1200 },
     ];
 
-    expect(rowChangePercent(1300, points, RANGE_START)).toBeCloseTo(30, 10);
+    expect(pct(1300, points)).toBeCloseTo(30, 10);
   });
 
   test("is the current value, not the series' last point, that moves it", () => {
@@ -65,7 +97,22 @@ describe("rowChangePercent — the range-scoped row percentage", () => {
     // ever supplies the denominator.
     const points = [{ timestamp: "2026-01-01", value: 1000 }];
 
-    expect(rowChangePercent(900, points, RANGE_START)).toBeCloseTo(-10, 10);
+    expect(pct(900, points)).toBeCloseTo(-10, 10);
+  });
+
+  test("a range that does not end today has no percentage", () => {
+    // The bug this guards against: /portfolio/positions takes no date, so
+    // `currentValue` is always *today's*. On a Custom range ending in the
+    // past the header measures first -> last while a row measured
+    // rangeStart -> today — two percentages that look identical and mean
+    // different things, which is exactly what behaviour.md § Percentages
+    // was written to kill. A dash is the honest answer.
+    const points = [
+      { timestamp: "2026-01-01", value: 1000 },
+      { timestamp: "2026-02-01", value: 1200 },
+    ];
+
+    expect(pct(1300, points, RANGE_START, false)).toBeNull();
   });
 
   test("a position opened inside the range has no percentage", () => {
@@ -74,31 +121,31 @@ describe("rowChangePercent — the range-scoped row percentage", () => {
     // exist at the start of the range.
     const points = [{ timestamp: "2026-03-01", value: 500 }];
 
-    expect(rowChangePercent(600, points, RANGE_START)).toBeNull();
+    expect(pct(600, points)).toBeNull();
   });
 
   test("a dash, never a fabricated zero, for a position opened in range", () => {
     const points = [{ timestamp: "2026-03-01", value: 600 }];
 
-    expect(rowChangePercent(600, points, RANGE_START)).not.toBe(0);
-    expect(rowChangePercent(600, points, RANGE_START)).toBeNull();
+    expect(pct(600, points)).not.toBe(0);
+    expect(pct(600, points)).toBeNull();
   });
 
   test("an empty series has no percentage", () => {
-    expect(rowChangePercent(600, [], RANGE_START)).toBeNull();
-    expect(rowChangePercent(600, undefined, RANGE_START)).toBeNull();
+    expect(pct(600, [])).toBeNull();
+    expect(pct(600, undefined)).toBeNull();
   });
 
   test("a row with no current value has no percentage", () => {
     const points = [{ timestamp: "2026-01-01", value: 1000 }];
 
-    expect(rowChangePercent(null, points, RANGE_START)).toBeNull();
+    expect(pct(null, points)).toBeNull();
   });
 
   test("a zero opening value has no percentage", () => {
     const points = [{ timestamp: "2026-01-01", value: 0 }];
 
-    expect(rowChangePercent(600, points, RANGE_START)).toBeNull();
+    expect(pct(600, points)).toBeNull();
   });
 
   test("a series starting before the range start still counts as present", () => {
@@ -106,26 +153,26 @@ describe("rowChangePercent — the range-scoped row percentage", () => {
     // the position did not exist yet.
     const points = [{ timestamp: "2025-12-15", value: 200 }];
 
-    expect(rowChangePercent(300, points, RANGE_START)).toBeCloseTo(50, 10);
+    expect(pct(300, points)).toBeCloseTo(50, 10);
   });
 
   test("percentages are signed against the magnitude of the opening value", () => {
     // Unrealized gain can open negative; a loss shrinking is still a rise.
     const points = [{ timestamp: "2026-01-01", value: -100 }];
 
-    expect(rowChangePercent(-50, points, RANGE_START)).toBeCloseTo(50, 10);
+    expect(pct(-50, points)).toBeCloseTo(50, 10);
   });
 
   test("the same row moves when the range moves", () => {
     // Each range gets its own query, so each gets its own series — the
     // shorter one simply starts later. Same holding, same current value,
     // different percentage: that is the whole point of range-scoping.
-    const overOneYear = rowChangePercent(
+    const overOneYear = pct(
       1300,
       [{ timestamp: "2026-01-01", value: 1000 }],
       "2026-01-01",
     );
-    const overTwoYears = rowChangePercent(
+    const overTwoYears = pct(
       1300,
       [
         { timestamp: "2025-01-01", value: 500 },
@@ -145,7 +192,7 @@ describe("rowChangePercent — the range-scoped row percentage", () => {
       { timestamp: "2026-06-01", value: 1100 },
     ];
 
-    expect(rowChangePercent(1300, points, "2026-01-01")).toBeCloseTo(30, 10);
+    expect(pct(1300, points, "2026-01-01")).toBeCloseTo(30, 10);
   });
 });
 
@@ -207,6 +254,32 @@ describe("addSeries", () => {
   });
 });
 
+describe("combineAccountSeries", () => {
+  test("adds equity and cash per account, over the union of both", () => {
+    const combined = combineAccountSeries(
+      { acc1: [{ timestamp: "2026-01-01", value: 1000 }] },
+      {
+        acc1: [{ timestamp: "2026-01-01", value: 250 }],
+        acc2: [{ timestamp: "2026-01-01", value: 500 }],
+      },
+    );
+
+    expect(combined.acc1).toEqual([{ timestamp: "2026-01-01", value: 1250 }]);
+    // A cash-only account has no equity series at all and must still get
+    // a row — that is the Accounts tab's whole point.
+    expect(combined.acc2).toEqual([{ timestamp: "2026-01-01", value: 500 }]);
+  });
+
+  test("an account with equity but no cash still combines", () => {
+    const combined = combineAccountSeries(
+      { acc1: [{ timestamp: "2026-01-01", value: 1000 }] },
+      {},
+    );
+
+    expect(combined.acc1).toEqual([{ timestamp: "2026-01-01", value: 1000 }]);
+  });
+});
+
 describe("buildHoldingRows", () => {
   test("sums a single instrument held across two accounts", () => {
     const rows = buildHoldingRows({
@@ -217,6 +290,7 @@ describe("buildHoldingRows", () => {
       instruments: INSTRUMENTS,
       pointsByInstrument: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows).toHaveLength(1);
@@ -235,6 +309,7 @@ describe("buildHoldingRows", () => {
       instruments: INSTRUMENTS,
       pointsByInstrument: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows.map((r) => r.instrumentId)).toEqual(["goog"]);
@@ -249,6 +324,7 @@ describe("buildHoldingRows", () => {
       instruments: INSTRUMENTS,
       pointsByInstrument: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows.map((r) => r.instrumentId)).toEqual(["tsla", "goog"]);
@@ -260,6 +336,7 @@ describe("buildHoldingRows", () => {
       instruments: INSTRUMENTS,
       pointsByInstrument: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows[0].marketValue).toBeNull();
@@ -275,9 +352,29 @@ describe("buildHoldingRows", () => {
         tsla: [{ timestamp: "2026-01-01", value: 1 }],
       },
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows[0].changePercent).toBeCloseTo(30, 10);
+  });
+
+  test("a range that does not end today dashes every row percentage", () => {
+    // The positions endpoint has no date parameter, so `market_value` is
+    // always today's. Measuring it against a window that closed months
+    // ago would put a number beside the header that means something else
+    // (behaviour.md § Percentages).
+    const rows = buildHoldingRows({
+      positions: [position({ instrument_id: "goog", market_value: "1300" })],
+      instruments: INSTRUMENTS,
+      pointsByInstrument: {
+        goog: [{ timestamp: "2026-01-01", value: 1000 }],
+      },
+      rangeStart: RANGE_START,
+      currentValueIsRangeEnd: false,
+    });
+
+    expect(rows[0].marketValue).toBe(1300);
+    expect(rows[0].changePercent).toBeNull();
   });
 
   test("a closed position keeps its realized gain", () => {
@@ -294,6 +391,7 @@ describe("buildHoldingRows", () => {
       instruments: INSTRUMENTS,
       pointsByInstrument: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows[0].shareCount).toBe(0);
@@ -311,6 +409,7 @@ describe("buildAccountRows", () => {
       accounts: ACCOUNTS,
       pointsByAccount: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows.find((r) => r.accountId === "acc1")?.value).toBe(2000);
@@ -322,6 +421,7 @@ describe("buildAccountRows", () => {
       accounts: ACCOUNTS,
       pointsByAccount: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows.map((r) => r.accountId).sort()).toEqual(["acc1", "acc2"]);
@@ -334,6 +434,7 @@ describe("buildAccountRows", () => {
       accounts: ACCOUNTS,
       pointsByAccount: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows.find((r) => r.accountId === "acc1")?.accountType).toBe(
@@ -351,6 +452,7 @@ describe("buildAccountRows", () => {
       accounts: ACCOUNTS,
       pointsByAccount: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows.find((r) => r.accountId === "acc1")?.value).toBeNull();
@@ -364,6 +466,7 @@ describe("buildAccountRows", () => {
         acc1: [{ timestamp: "2026-01-01", value: 1000 }],
       },
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows.find((r) => r.accountId === "acc1")?.changePercent).toBeCloseTo(
@@ -376,13 +479,33 @@ describe("buildAccountRows", () => {
 describe("splitClosed", () => {
   test("zero-share rows are separated from live ones", () => {
     const { live, closed } = splitClosed([
-      { shareCount: 10, id: "a" },
-      { shareCount: 0, id: "b" },
-      { shareCount: 0.5, id: "c" },
+      { shareCount: 10, realizedGain: 0, id: "a" },
+      { shareCount: 0, realizedGain: 120, id: "b" },
+      { shareCount: 0.5, realizedGain: 0, id: "c" },
     ]);
 
     expect(live.map((r) => r.id)).toEqual(["a", "c"]);
     expect(closed.map((r) => r.id)).toEqual(["b"]);
+  });
+
+  test("a round trip at cost is neither live nor closed", () => {
+    // #16 scopes the closed disclosure to "share count zero, *but with
+    // realized gain*". Bought and sold at the same price books exactly
+    // nothing, so filing it under "Closed positions · 1 … realized
+    // +$0.00" advertises a row with nothing to say.
+    const { live, closed } = splitClosed([
+      { shareCount: 10, realizedGain: 0, id: "a" },
+      { shareCount: 0, realizedGain: 0, id: "flat" },
+    ]);
+
+    expect(live.map((r) => r.id)).toEqual(["a"]);
+    expect(closed).toEqual([]);
+  });
+
+  test("a realized loss still counts as closed", () => {
+    const { closed } = splitClosed([{ shareCount: 0, realizedGain: -80, id: "l" }]);
+
+    expect(closed.map((r) => r.id)).toEqual(["l"]);
   });
 });
 
@@ -398,6 +521,7 @@ describe("buildInstrumentAccountRows — the instrument level's breakdown", () =
       instrumentId: "goog",
       pointsByAccount: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows.map((r) => r.accountId)).toEqual(["acc2", "acc1"]);
@@ -414,6 +538,7 @@ describe("buildInstrumentAccountRows — the instrument level's breakdown", () =
       instrumentId: "goog",
       pointsByAccount: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows).toHaveLength(1);
@@ -426,6 +551,7 @@ describe("buildInstrumentAccountRows — the instrument level's breakdown", () =
       instrumentId: "goog",
       pointsByAccount: { acc1: [{ timestamp: "2026-01-01", value: 1000 }] },
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows[0].changePercent).toBeCloseTo(50, 10);
@@ -447,6 +573,7 @@ describe("buildInstrumentAccountRows — the instrument level's breakdown", () =
       instrumentId: "goog",
       pointsByAccount: {},
       rangeStart: RANGE_START,
+      currentValueIsRangeEnd: true,
     });
 
     expect(rows[0].shareCount).toBe(0);

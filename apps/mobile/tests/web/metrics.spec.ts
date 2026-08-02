@@ -230,6 +230,52 @@ test("the Accounts sheet picks an account and gets back to the whole portfolio",
   await expect(page.getByTestId("all-accounts-chip")).toBeVisible();
 });
 
+test("the Accounts sheet disables accounts that never held the instrument", async ({
+  page,
+}) => {
+  // AC 18.6: an option you cannot usefully pick stays on screen and says
+  // why. Picking Cash Reserve while GOOG is in scope builds a slice with
+  // no holding row, no closed row and a chart with no points.
+  await openDashboard(page);
+  await page.getByTestId("holding-row-goog").click();
+  await expect(page.getByTestId("chip-instrument")).toContainText("GOOG");
+
+  await page.getByTestId("all-accounts-chip").click();
+  await expect(page.getByTestId("accounts-sheet")).toBeVisible();
+
+  // The seed holds GOOG in the brokerage and the IRA, never in the
+  // cash-only reserve.
+  await expect(page.getByTestId(`accounts-sheet-note-${IRA}`)).not.toHaveText(
+    "Never held GOOG",
+  );
+  await expect(page.getByTestId(`accounts-sheet-note-${RESERVE}`)).toHaveText(
+    "Never held GOOG",
+  );
+
+  // Disabled means disabled: tapping it leaves the sheet open and the
+  // scope untouched.
+  await page.getByTestId(`accounts-sheet-option-${RESERVE}`).click();
+  await expect(page.getByTestId("accounts-sheet")).toBeVisible();
+  await expect(page.getByTestId("chip-account")).toHaveCount(0);
+
+  // And the enabled one still works.
+  await page.getByTestId(`accounts-sheet-option-${IRA}`).click();
+  await expect(page.getByTestId("chip-account")).toContainText("IRA");
+});
+
+test("with no instrument in scope every account stays selectable", async ({
+  page,
+}) => {
+  await openDashboard(page);
+  await page.getByTestId("all-accounts-chip").click();
+
+  for (const account of [IRA, RESERVE]) {
+    await expect(
+      page.getByTestId(`accounts-sheet-note-${account}`),
+    ).not.toContainText("Never held");
+  }
+});
+
 test("the Custom pill opens a date-range sheet and applies the bounds", async ({
   page,
 }) => {

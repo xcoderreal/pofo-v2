@@ -174,12 +174,19 @@ describe("buildBars", () => {
     expect(bars[1].y + bars[1].height).toBeGreaterThan(zeroY);
   });
 
-  test("a zero bucket still gets a visible tick", () => {
+  test("a zero bucket still gets a visible tick, straddling the baseline", () => {
+    // The bug this guards against: the tick was anchored with
+    // `Math.min(top, zeroY)`, and for a zero bucket `top === zeroY`, so
+    // its whole height hung *below* the line — a bucket that booked
+    // nothing drawn as a small loss.
     const points = [pt("2026-01-31", 1000), pt("2026-02-28", 0)];
 
-    const { bars } = buildBars(points, 300, 100);
+    const { bars, zeroY } = buildBars(points, 300, 100);
 
     expect(bars[1].height).toBeGreaterThan(0);
+    expect(bars[1].y).toBeLessThan(zeroY);
+    expect(bars[1].y + bars[1].height).toBeGreaterThan(zeroY);
+    expect(bars[1].y + bars[1].height / 2).toBeCloseTo(zeroY, 6);
   });
 
   test("sparse buckets are placed by date, not by slot", () => {

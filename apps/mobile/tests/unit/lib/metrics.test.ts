@@ -12,6 +12,7 @@ import {
   defaultRangeForMetric,
   flowTotal,
   formatMetricValue,
+  formatSignedMetric,
   METRICS,
   metricHasAccountDimension,
   metricHasInstrumentDimension,
@@ -374,6 +375,29 @@ describe("formatMetricValue", () => {
   test("everything else is the shared money format", () => {
     expect(formatMetricValue("equity", 1234.5)).toBe("$1,234.50");
     expect(formatMetricValue("unrealized_gain", -1234.5)).toBe("−$1,234.50");
+  });
+});
+
+describe("formatSignedMetric — the delta line under the headline", () => {
+  test("a share-count delta is a count, not dollars", () => {
+    // The bug this guards against: the delta line reached for the
+    // USD-only formatter, so 10 shares -> 15 rendered "+$5.00" directly
+    // under a headline correctly reading "15".
+    expect(formatSignedMetric("share_count", 5)).toBe("+5");
+    expect(formatSignedMetric("share_count", -2.5)).toBe("−2.5");
+  });
+
+  test("a price delta keeps its cents", () => {
+    expect(formatSignedMetric("market_price", 12_345.5)).toBe("+$12,345.50");
+  });
+
+  test("money metrics are unchanged", () => {
+    expect(formatSignedMetric("equity", 1234.5)).toBe("+$1,234.50");
+    expect(formatSignedMetric("unrealized_gain", -1234.5)).toBe("−$1,234.50");
+  });
+
+  test("zero reads as a rise, matching the colour rule above it", () => {
+    expect(formatSignedMetric("equity", 0)).toBe("+$0.00");
   });
 });
 

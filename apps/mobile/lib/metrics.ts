@@ -185,6 +185,19 @@ export function formatMetricValue(metric: Metric, value: number): string {
   return formatUsd(value);
 }
 
+/**
+ * A *change* in a metric's value, always carrying an explicit sign.
+ *
+ * The delta line under the headline needs the same per-metric formatter
+ * the headline itself uses. It used to reach for `formatSigned`, which is
+ * USD-only — so a share count going 10 → 15 rendered as `+$5.00`, money
+ * that was never involved, sitting directly under a headline correctly
+ * reading `15`.
+ */
+export function formatSignedMetric(metric: Metric, value: number): string {
+  return `${value >= 0 ? "+" : "−"}${formatMetricValue(metric, Math.abs(value))}`;
+}
+
 // ─── Conflict resolution ──────────────────────────────────────
 
 export type ScopeDimension = "instrument" | "account";
