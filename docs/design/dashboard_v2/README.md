@@ -7,8 +7,8 @@ behaviour that tickets #13–#29 implement.
 
 | File | What it is |
 |---|---|
-| [`behaviour.md`](behaviour.md) | **Start here.** The binding behaviour, digested. Acceptance criteria for the dashboard tickets. |
-| [`prototype-source.js`](prototype-source.js) | The prototype's actual logic — 640 readable lines. Ground truth when the digest is ambiguous. |
+| [`behaviour.md`](behaviour.md) | **Start here.** The binding behaviour, digested from the prototype *and corrected by the design interview* — it outranks the prototype. |
+| [`prototype-source.js`](prototype-source.js) | The prototype's actual logic — 640 readable lines. A rough reference: consult it where the digest is silent on interaction mechanics, but interpret intent — it has known glitches. |
 | `portfolio-app-v2.html` | The runnable prototype. 425KB, self-contained, **not readable directly** (two of its lines exceed 300KB). |
 | [`extract-prototype.py`](extract-prototype.py) | Regenerates `prototype-source.js` from the HTML. |
 

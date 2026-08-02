@@ -11,10 +11,20 @@ So: treat everything in this file as acceptance criteria. Treat exact
 strings and colours as sensible defaults to use unless React Native
 fights them.
 
-Ground truth is [`prototype-source.js`](prototype-source.js) — 640 lines
-of real logic, not a mockup. This file is a digest of it. Where the two
-disagree, the source wins; re-derive with `extract-prototype.py` and fix
-this file.
+**Precedence: this file and [ADR-0001](../../adr/0001-dashboard-v2.md)
+outrank the prototype.** They encode the design-interview decisions,
+which are the ground truth. The prototype is a *rough reference* — it
+has its own glitches (YTD hardcoded to 213 days, a 731-day mock history
+masquerading as a "2Y" limit, fabricated deposits to dodge the cash
+question) — so where it disagrees with this file, this file wins.
+Interpret its intent, don't transcribe its bugs.
+
+[`prototype-source.js`](prototype-source.js) — 640 lines of real logic,
+not a mockup — is what you consult where this digest is *silent or
+ambiguous* about an interaction's mechanics (exact thresholds, ordering,
+what clears what). Re-derive it with `extract-prototype.py` if you
+suspect this digest mis-describes it — then fix the digest, unless the
+divergence was an interview decision recorded here or in the ADR.
 
 ## Navigation and scope
 
