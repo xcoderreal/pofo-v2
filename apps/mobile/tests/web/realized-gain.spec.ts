@@ -21,6 +21,12 @@ async function openDashboard(page: Page) {
   await page.goto("/");
   await page.waitForLoadState("networkidle");
   await expect(page.getByTestId("positions-list")).toBeVisible();
+  // Wait for the list and the chart, not just the list's container — the
+  // reflow spec below measures bounding boxes, and a box read while text
+  // metrics are still settling compares two different layouts. Matches
+  // what metrics.spec.ts and drilldown.spec.ts already wait for.
+  await expect(page.getByTestId("positions-loading")).toBeHidden();
+  await expect(page.getByTestId("chart-loading")).toBeHidden();
 }
 
 async function pickMetric(page: Page, metric: string) {
