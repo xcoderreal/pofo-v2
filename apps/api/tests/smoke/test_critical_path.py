@@ -23,8 +23,8 @@ def test_health(http_client: httpx.Client):
 
 
 def test_list_endpoint_reachable(http_client: httpx.Client):
-    """GET /items returns JSON list. No content assertions — this is smoke."""
-    resp = http_client.get("/items")
+    """GET /instruments returns JSON list. No content assertions — this is smoke."""
+    resp = http_client.get("/instruments")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
 
@@ -42,20 +42,21 @@ def test_me_reachable(http_client: httpx.Client):
     assert "user_id" in resp.json()
 
 
-def test_create_read_delete_roundtrip(http_client: httpx.Client, allow_writes: bool):
+def test_create_read_roundtrip(http_client: httpx.Client, allow_writes: bool):
     if not allow_writes:
         pytest.skip("writes disabled for this target (set SKELETON_E2E_ALLOW_WRITES=1)")
 
-    item_id = f"smoke-{uuid.uuid4().hex[:8]}"
+    symbol = f"SMK{uuid.uuid4().hex[:6].upper()}"
+    instrument_id = f"smoke-{symbol.lower()}"
     payload = {
-        "id": item_id,
+        "id": instrument_id,
+        "symbol": symbol,
         "name": "smoke",
-        "description": "critical path",
-        "tags": ["smoke"],
+        "asset_class": "equity",
     }
-    post = http_client.post("/items", json=payload)
+    post = http_client.post("/instruments", json=payload)
     assert post.status_code == 201, post.text
 
-    got = http_client.get(f"/items/{item_id}")
+    got = http_client.get(f"/instruments/{instrument_id}")
     assert got.status_code == 200
-    assert got.json()["id"] == item_id
+    assert got.json()["id"] == instrument_id

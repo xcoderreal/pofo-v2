@@ -4,18 +4,18 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from myapp.adapters.memory_repository import (
-    MemoryCategoryRepository,
-    MemoryItemRepository,
-)
+from myapp.adapters.memory_repository import MemoryInstrumentRepository
 from myapp.adapters.stub_auth_provider import StubAuthProvider
 from myapp.adapters.supabase_auth_provider import SupabaseAuthProvider
 from myapp.config import Settings
 from myapp.domain.auth import AuthenticationError, AuthProvider
-from myapp.domain.model import Category, Item, User
-from myapp.domain.repository import CategoryRepository, ItemRepository
-from myapp.service.category_service import CategoryService
-from myapp.service.item_service import ItemService
+from myapp.domain.model import AssetClass, Instrument, User
+from myapp.domain.repository import InstrumentRepository
+from myapp.service.instrument_service import (
+    DuplicateIdError,
+    DuplicateSymbolError,
+    InstrumentService,
+)
 
 
 def _build_auth_provider(settings: Settings) -> AuthProvider:
@@ -36,8 +36,7 @@ async def lifespan(app: FastAPI):
     # production/stub validation guard fires at real app startup rather
     # than whenever this module happens to be imported (e.g. test collection).
     settings = Settings()
-    app.state.item_repo = MemoryItemRepository()
-    app.state.category_repo = MemoryCategoryRepository()
+    app.state.instrument_repo = MemoryInstrumentRepository()
     app.state.auth_provider = _build_auth_provider(settings)
     yield
 
@@ -52,171 +51,87 @@ app.add_middleware(
 )
 
 
-# ─── Item dependencies ────────────────────────────────────────
+# ─── Instrument dependencies ───────────────────────────────────
 
 
-def get_repo(request: Request) -> ItemRepository:
-    return request.app.state.item_repo
+def get_instrument_repo(request: Request) -> InstrumentRepository:
+    return request.app.state.instrument_repo
 
 
-def get_service(repo: ItemRepository = Depends(get_repo)) -> ItemService:
-    return ItemService(repo=repo)
+def get_instrument_service(
+    repo: InstrumentRepository = Depends(get_instrument_repo),
+) -> InstrumentService:
+    return InstrumentService(repo=repo)
 
 
-# ─── Category dependencies ────────────────────────────────────
+# ─── Instrument schemas ────────────────────────────────────────
 
 
-def get_category_repo(request: Request) -> CategoryRepository:
-    return request.app.state.category_repo
-
-
-def get_category_service(
-    repo: CategoryRepository = Depends(get_category_repo),
-) -> CategoryService:
-    return CategoryService(repo=repo)
-
-
-# ─── Item schemas ─────────────────────────────────────────────
-
-
-class ItemResponse(BaseModel):
+class InstrumentResponse(BaseModel):
     id: str
+    symbol: str
     name: str
-    description: str = ""
-    tags: list[str] = []
-    category_id: str | None = None
+    asset_class: AssetClass
 
 
-class CreateItemRequest(BaseModel):
+class CreateInstrumentRequest(BaseModel):
     id: str
+    symbol: str
     name: str
-    description: str = ""
-    tags: list[str] = []
-    category_id: str | None = None
+    asset_class: AssetClass
 
 
-# ─── Category schemas ─────────────────────────────────────────
+# ─── Converters ─────────────────────────────────────────────────
 
 
-class CategoryResponse(BaseModel):
-    id: str
-    name: str
-
-
-class CreateCategoryRequest(BaseModel):
-    id: str
-    name: str
-
-
-# ─── Converters ───────────────────────────────────────────────
-
-
-def _to_item_response(item: Item) -> ItemResponse:
-    return ItemResponse(
-        id=item.id,
-        name=item.name,
-        description=item.description,
-        tags=item.tags,
-        category_id=item.category_id,
+def _to_instrument_response(instrument: Instrument) -> InstrumentResponse:
+    return InstrumentResponse(
+        id=instrument.id,
+        symbol=instrument.symbol,
+        name=instrument.name,
+        asset_class=instrument.asset_class,
     )
 
 
-def _to_category_response(category: Category) -> CategoryResponse:
-    return CategoryResponse(id=category.id, name=category.name)
+# ─── Instrument routes ─────────────────────────────────────────
+# Instruments are global reference data (a ticker symbol isn't private) —
+# see docs/domain-model.md. No user scoping, no auth dependency here.
 
 
-# ─── Item routes ──────────────────────────────────────────────
-
-
-@app.get("/items", response_model=list[ItemResponse])
-def list_items(
-    tag: str | None = None,
-    category_id: str | None = None,
-    service: ItemService = Depends(get_service),
+@app.get("/instruments", response_model=list[InstrumentResponse])
+def list_instruments(
+    service: InstrumentService = Depends(get_instrument_service),
 ):
-    items = service.list_items(tag=tag)
-    if category_id is not None:
-        items = [i for i in items if i.category_id == category_id]
-    return [_to_item_response(i) for i in items]
+    return [_to_instrument_response(i) for i in service.list_instruments()]
 
 
-@app.get("/items/{item_id}", response_model=ItemResponse)
-def get_item(
-    item_id: str,
-    service: ItemService = Depends(get_service),
+@app.get("/instruments/{instrument_id}", response_model=InstrumentResponse)
+def get_instrument(
+    instrument_id: str,
+    service: InstrumentService = Depends(get_instrument_service),
 ):
-    item = service.get_item(item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-    return _to_item_response(item)
+    instrument = service.get_instrument(instrument_id)
+    if not instrument:
+        raise HTTPException(status_code=404, detail="Instrument not found")
+    return _to_instrument_response(instrument)
 
 
-@app.post("/items", response_model=ItemResponse, status_code=201)
-def create_item(
-    request: CreateItemRequest,
-    service: ItemService = Depends(get_service),
+@app.post("/instruments", response_model=InstrumentResponse, status_code=201)
+def create_instrument(
+    request: CreateInstrumentRequest,
+    service: InstrumentService = Depends(get_instrument_service),
 ):
-    item = Item(
+    instrument = Instrument(
         id=request.id,
+        symbol=request.symbol,
         name=request.name,
-        description=request.description,
-        tags=request.tags,
-        category_id=request.category_id,
+        asset_class=request.asset_class,
     )
-    service.create_item(item)
-    return _to_item_response(item)
-
-
-@app.delete("/items/{item_id}", status_code=204)
-def delete_item(
-    item_id: str,
-    service: ItemService = Depends(get_service),
-):
-    item = service.get_item(item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-    service.delete_item(item_id)
-
-
-# ─── Category routes ──────────────────────────────────────────
-
-
-@app.get("/categories", response_model=list[CategoryResponse])
-def list_categories(
-    service: CategoryService = Depends(get_category_service),
-):
-    return [_to_category_response(c) for c in service.list_categories()]
-
-
-@app.get("/categories/{category_id}", response_model=CategoryResponse)
-def get_category(
-    category_id: str,
-    service: CategoryService = Depends(get_category_service),
-):
-    category = service.get_category(category_id)
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-    return _to_category_response(category)
-
-
-@app.post("/categories", response_model=CategoryResponse, status_code=201)
-def create_category(
-    request: CreateCategoryRequest,
-    service: CategoryService = Depends(get_category_service),
-):
-    category = Category(id=request.id, name=request.name)
-    service.create_category(category)
-    return _to_category_response(category)
-
-
-@app.delete("/categories/{category_id}", status_code=204)
-def delete_category(
-    category_id: str,
-    service: CategoryService = Depends(get_category_service),
-):
-    deleted = service.delete_category(category_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Category not found")
+    try:
+        service.create_instrument(instrument)
+    except (DuplicateIdError, DuplicateSymbolError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _to_instrument_response(instrument)
 
 
 # ─── Auth ─────────────────────────────────────────────────────

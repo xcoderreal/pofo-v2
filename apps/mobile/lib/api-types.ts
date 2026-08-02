@@ -4,73 +4,53 @@
  */
 
 export interface paths {
-    "/items": {
+    "/instruments": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Items */
-        get: operations["list_items_items_get"];
+        /** List Instruments */
+        get: operations["list_instruments_instruments_get"];
         put?: never;
-        /** Create Item */
-        post: operations["create_item_items_post"];
+        /** Create Instrument */
+        post: operations["create_instrument_instruments_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/items/{item_id}": {
+    "/instruments/{instrument_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Item */
-        get: operations["get_item_items__item_id__get"];
+        /** Get Instrument */
+        get: operations["get_instrument_instruments__instrument_id__get"];
         put?: never;
         post?: never;
-        /** Delete Item */
-        delete: operations["delete_item_items__item_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/categories": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Categories */
-        get: operations["list_categories_categories_get"];
-        put?: never;
-        /** Create Category */
-        post: operations["create_category_categories_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/categories/{category_id}": {
+    "/me": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Category */
-        get: operations["get_category_categories__category_id__get"];
+        /** Get Me */
+        get: operations["get_me_me_get"];
         put?: never;
         post?: never;
-        /** Delete Category */
-        delete: operations["delete_category_categories__category_id__delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -97,62 +77,35 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** CategoryResponse */
-        CategoryResponse: {
+        /**
+         * AssetClass
+         * @enum {string}
+         */
+        AssetClass: "equity" | "etf" | "crypto" | "cash";
+        /** CreateInstrumentRequest */
+        CreateInstrumentRequest: {
             /** Id */
             id: string;
+            /** Symbol */
+            symbol: string;
             /** Name */
             name: string;
-        };
-        /** CreateCategoryRequest */
-        CreateCategoryRequest: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-        };
-        /** CreateItemRequest */
-        CreateItemRequest: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Tags
-             * @default []
-             */
-            tags: string[];
-            /** Category Id */
-            category_id?: string | null;
+            asset_class: components["schemas"]["AssetClass"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** ItemResponse */
-        ItemResponse: {
+        /** InstrumentResponse */
+        InstrumentResponse: {
             /** Id */
             id: string;
+            /** Symbol */
+            symbol: string;
             /** Name */
             name: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Tags
-             * @default []
-             */
-            tags: string[];
-            /** Category Id */
-            category_id?: string | null;
+            asset_class: components["schemas"]["AssetClass"];
         };
         /** ValidationError */
         ValidationError: {
@@ -176,12 +129,9 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_items_items_get: {
+    list_instruments_instruments_get: {
         parameters: {
-            query?: {
-                tag?: string | null;
-                category_id?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -194,21 +144,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ItemResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["InstrumentResponse"][];
                 };
             };
         };
     };
-    create_item_items_post: {
+    create_instrument_instruments_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -217,7 +158,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateItemRequest"];
+                "application/json": components["schemas"]["CreateInstrumentRequest"];
             };
         };
         responses: {
@@ -227,7 +168,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ItemResponse"];
+                    "application/json": components["schemas"]["InstrumentResponse"];
                 };
             };
             /** @description Validation Error */
@@ -241,12 +182,12 @@ export interface operations {
             };
         };
     };
-    get_item_items__item_id__get: {
+    get_instrument_instruments__instrument_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                item_id: string;
+                instrument_id: string;
             };
             cookie?: never;
         };
@@ -258,7 +199,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ItemResponse"];
+                    "application/json": components["schemas"]["InstrumentResponse"];
                 };
             };
             /** @description Validation Error */
@@ -272,36 +213,7 @@ export interface operations {
             };
         };
     };
-    delete_item_items__item_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                item_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_categories_categories_get: {
+    get_me_me_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -316,100 +228,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CategoryResponse"][];
-                };
-            };
-        };
-    };
-    create_category_categories_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateCategoryRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CategoryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_category_categories__category_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                category_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CategoryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_category_categories__category_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                category_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
         };

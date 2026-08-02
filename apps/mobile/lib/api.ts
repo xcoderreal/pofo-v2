@@ -4,10 +4,9 @@ import { resolveApiBaseUrl } from "./env";
 const BASE_URL = resolveApiBaseUrl();
 
 /** Backend types — generated from Pydantic models via OpenAPI. */
-export type Item = components["schemas"]["ItemResponse"];
-export type CreateItemRequest = components["schemas"]["CreateItemRequest"];
-export type Category = components["schemas"]["CategoryResponse"];
-export type CreateCategoryRequest = components["schemas"]["CreateCategoryRequest"];
+export type Instrument = components["schemas"]["InstrumentResponse"];
+export type CreateInstrumentRequest =
+  components["schemas"]["CreateInstrumentRequest"];
 
 function resolveBase(): string {
   return BASE_URL.startsWith("/")
@@ -15,61 +14,35 @@ function resolveBase(): string {
     : BASE_URL;
 }
 
-// ─── Items ───────────────────────────────────────────────────
+// ─── Instruments ────────────────────────────────────────────
 
-export async function fetchItems(params?: {
-  tag?: string;
-  category_id?: string;
-}): Promise<Item[]> {
-  const url = new URL(`${resolveBase()}/items`);
-  if (params?.tag) url.searchParams.set("tag", params.tag);
-  if (params?.category_id)
-    url.searchParams.set("category_id", params.category_id);
-  const res = await fetch(url.toString());
+export async function fetchInstruments(): Promise<Instrument[]> {
+  const res = await fetch(`${resolveBase()}/instruments`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch instruments (${res.status})`);
+  }
   return res.json();
 }
 
-export async function fetchItem(id: string): Promise<Item> {
-  const res = await fetch(`${resolveBase()}/items/${id}`);
+export async function fetchInstrument(id: string): Promise<Instrument> {
+  const res = await fetch(`${resolveBase()}/instruments/${id}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch instrument ${id} (${res.status})`);
+  }
   return res.json();
 }
 
-export async function createItem(item: CreateItemRequest): Promise<Item> {
-  const res = await fetch(`${resolveBase()}/items`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(item),
-  });
-  return res.json();
-}
-
-export async function deleteItem(id: string): Promise<void> {
-  await fetch(`${resolveBase()}/items/${id}`, { method: "DELETE" });
-}
-
-// ─── Categories ──────────────────────────────────────────────
-
-export async function fetchCategories(): Promise<Category[]> {
-  const res = await fetch(`${resolveBase()}/categories`);
-  return res.json();
-}
-
-export async function fetchCategory(id: string): Promise<Category> {
-  const res = await fetch(`${resolveBase()}/categories/${id}`);
-  return res.json();
-}
-
-export async function createCategory(
-  data: CreateCategoryRequest,
-): Promise<Category> {
-  const res = await fetch(`${resolveBase()}/categories`, {
+export async function createInstrument(
+  data: CreateInstrumentRequest,
+): Promise<Instrument> {
+  const res = await fetch(`${resolveBase()}/instruments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Failed to create instrument (${res.status})`);
+  }
   return res.json();
-}
-
-export async function deleteCategory(id: string): Promise<void> {
-  await fetch(`${resolveBase()}/categories/${id}`, { method: "DELETE" });
 }
