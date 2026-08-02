@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from myapp.adapters.memory_repository import (
     MemoryAccountRepository,
@@ -33,6 +33,7 @@ from myapp.domain.repository import (
 )
 from myapp.service.account_service import AccountService
 from myapp.service.account_service import DuplicateIdError as AccountDuplicateIdError
+from myapp.service.cash_service import CashService
 from myapp.service.instrument_service import (
     DuplicateIdError as InstrumentDuplicateIdError,
 )
@@ -382,6 +383,80 @@ def get_position(
         share_count=position.share_count,
         cost_basis=position.cost_basis,
     )
+
+
+# ─── Cash dependencies ──────────────────────────────────────────
+
+
+def get_cash_service(
+    transaction_service: TransactionService = Depends(get_transaction_service),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
+) -> CashService:
+    return CashService(
+        transaction_service=transaction_service, instrument_service=instrument_service
+    )
+
+
+# ─── Cash schemas ────────────────────────────────────────────────
+
+
+class DepositRequest(BaseModel):
+    account_id: str
+    amount: Decimal = Field(gt=0)
+    timestamp: datetime
+
+
+class WithdrawalRequest(BaseModel):
+    account_id: str
+    amount: Decimal = Field(gt=0)
+    timestamp: datetime
+
+
+# ─── Cash routes ─────────────────────────────────────────────────
+# Deposit/Withdrawal are request-shape labels, not a domain concept — each
+# is a BUY/SELL Transaction of the CASH instrument under the hood
+# (docs/domain-model.md), so both reuse TransactionResponse and the exact
+# same ownership/sufficient-funds validation as any other trade.
+
+
+@app.post("/transactions/deposit", response_model=TransactionResponse, status_code=201)
+def deposit(
+    request: DepositRequest,
+    current_user: User = Depends(get_current_user),
+    service: CashService = Depends(get_cash_service),
+):
+    try:
+        transaction = service.deposit(
+            id=str(uuid.uuid4()),
+            user_id=current_user.id,
+            account_id=request.account_id,
+            amount=request.amount,
+            timestamp=request.timestamp,
+        )
+    except AccountNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _to_transaction_response(transaction)
+
+
+@app.post("/transactions/withdraw", response_model=TransactionResponse, status_code=201)
+def withdraw(
+    request: WithdrawalRequest,
+    current_user: User = Depends(get_current_user),
+    service: CashService = Depends(get_cash_service),
+):
+    try:
+        transaction = service.withdraw(
+            id=str(uuid.uuid4()),
+            user_id=current_user.id,
+            account_id=request.account_id,
+            amount=request.amount,
+            timestamp=request.timestamp,
+        )
+    except AccountNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InsufficientSharesError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _to_transaction_response(transaction)
 
 
 # ─── Health ───────────────────────────────────────────────────
