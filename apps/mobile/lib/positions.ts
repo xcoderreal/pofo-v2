@@ -54,6 +54,39 @@ export interface AccountRow {
   changePercent: number | null;
 }
 
+/** One account's share of a single instrument — the "Across your
+ * accounts" list at instrument level, and the single row at slice
+ * level. */
+export interface InstrumentAccountRow {
+  accountId: string;
+  name: string;
+  accountType: string;
+  shareCount: number;
+  /** null once the position is closed: a zero cost basis over zero
+   * shares has no average, and a $0 would read as a real price paid. */
+  averageCost: number | null;
+  marketValue: number | null;
+  realizedGain: number;
+  changePercent: number | null;
+}
+
+/** The six figures of the instrument-level stat card, summed across
+ * every account in scope. */
+export interface InstrumentStats {
+  shareCount: number;
+  /** Derived as `marketValue / shareCount` rather than fetched: the two
+   * come from the same batched positions call the stat card already
+   * reads (docs/adr/0001-dashboard-v2.md § 5), and `market_value` is
+   * exactly `shares × close`. null once there are no shares to divide
+   * by, or before any price has arrived. */
+  marketPrice: number | null;
+  averageCost: number | null;
+  marketValue: number | null;
+  unrealizedGain: number | null;
+  realizedGain: number;
+  costBasis: number;
+}
+
 const CASH_ASSET_CLASS = "cash";
 
 // ─── Series helpers ───────────────────────────────────────────
@@ -244,6 +277,148 @@ export function buildAccountRows(args: {
       };
     })
     .sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
+}
+
+/**
+ * One row per Account holding a given Instrument — the instrument level's
+ * "Across your accounts" list, and the single row a slice shows.
+ *
+ * Accounts that never traded the instrument are absent by construction:
+ * the positions endpoint omits pairs with no history, so this list is
+ * "accounts that have held it", not the whole account catalog. That is
+ * the opposite of `buildAccountRows`, which lists every account the user
+ * owns — there, an unfunded account is a real thing you own; here, an
+ * account that never touched GOOG is not part of your GOOG position.
+ */
+export function buildInstrumentAccountRows(args: {
+  positions: readonly PositionRow[] | undefined;
+  accounts: readonly AccountSummary[] | undefined;
+  instrumentId: string;
+  pointsByAccount: Record<string, RangePoint[]>;
+  rangeStart: string;
+}): InstrumentAccountRow[] {
+  const { positions, accounts, instrumentId, pointsByAccount, rangeStart } = args;
+  const catalog = new Map((accounts ?? []).map((a) => [a.id, a]));
+
+  return (positions ?? [])
+    .filter((row) => row.instrument_id === instrumentId)
+    .map((row) => {
+      const account = catalog.get(row.account_id);
+      const marketValue =
+        row.market_value === null ? null : Number(row.market_value);
+      return {
+        accountId: row.account_id,
+        name: account?.name ?? row.account_id,
+        accountType: accountTypeLabel(account?.account_type ?? ""),
+        shareCount: Number(row.share_count),
+        averageCost:
+          row.average_cost === null ? null : Number(row.average_cost),
+        marketValue,
+        realizedGain: Number(row.realized_gain),
+        changePercent: rowChangePercent(
+          marketValue,
+          pointsByAccount[row.account_id],
+          rangeStart,
+        ),
+      };
+    })
+    .sort((a, b) => (b.marketValue ?? -1) - (a.marketValue ?? -1));
+}
+
+/**
+ * The instrument stat card: shares, market price, average cost,
+ * unrealized gain, all-time realized gain and cost basis, summed over
+ * whichever accounts are in scope.
+ *
+ * Unrealized gain is summed from the rows rather than recomputed as
+ * `marketValue − costBasis`, so the "no price yet" rule stays the
+ * backend's single decision (GainsService) instead of being re-derived
+ * with a different answer here.
+ */
+export function buildInstrumentStats(
+  positions: readonly PositionRow[] | undefined,
+  instrumentId: string,
+): InstrumentStats {
+  let shareCount = 0;
+  let costBasis = 0;
+  let realizedGain = 0;
+  let marketValue: number | null = 0;
+  let unrealizedGain: number | null = 0;
+
+  for (const row of positions ?? []) {
+    if (row.instrument_id !== instrumentId) continue;
+    shareCount += Number(row.share_count);
+    costBasis += Number(row.cost_basis);
+    realizedGain += Number(row.realized_gain);
+    marketValue = addNullable(
+      marketValue,
+      row.market_value === null ? null : Number(row.market_value),
+    );
+    unrealizedGain = addNullable(
+      unrealizedGain,
+      row.unrealized_gain === null ? null : Number(row.unrealized_gain),
+    );
+  }
+
+  return {
+    shareCount,
+    marketPrice:
+      shareCount === 0 || marketValue === null ? null : marketValue / shareCount,
+    averageCost: shareCount === 0 ? null : costBasis / shareCount,
+    marketValue,
+    unrealizedGain,
+    realizedGain,
+    costBasis,
+  };
+}
+
+/**
+ * Uninvested cash in one account, or null when the account has no CASH
+ * position at all.
+ *
+ * CASH is priced at exactly 1, so its position's market value *is* the
+ * balance — the same derivation path as any other instrument, which is
+ * the whole point of storing the cash leg as a Transaction
+ * (docs/adr/0001-dashboard-v2.md § 2).
+ */
+export function cashBalanceFor(args: {
+  positions: readonly PositionRow[] | undefined;
+  instruments: readonly InstrumentSummary[] | undefined;
+  accountId: string;
+}): number | null {
+  const { positions, instruments, accountId } = args;
+  const catalog = new Map((instruments ?? []).map((i) => [i.id, i]));
+
+  for (const row of positions ?? []) {
+    if (row.account_id !== accountId) continue;
+    if (catalog.get(row.instrument_id)?.asset_class !== CASH_ASSET_CLASS) continue;
+    return row.market_value === null ? null : Number(row.market_value);
+  }
+  return null;
+}
+
+/**
+ * Does this account hold any instrument at all?
+ *
+ * Drives auto-adjustment 1 — an account with nothing but cash switches
+ * the metric to `cash_balance`. A fully closed position does not count:
+ * zero shares chart as a flat zero under every holdings metric, which is
+ * exactly the blank the auto-adjustment exists to avoid.
+ */
+export function accountHoldsInstruments(args: {
+  positions: readonly PositionRow[] | undefined;
+  instruments: readonly InstrumentSummary[] | undefined;
+  accountId: string;
+}): boolean {
+  const { positions, instruments, accountId } = args;
+  const catalog = new Map((instruments ?? []).map((i) => [i.id, i]));
+
+  return (positions ?? []).some(
+    (row) =>
+      row.account_id === accountId &&
+      catalog.get(row.instrument_id)?.asset_class !== CASH_ASSET_CLASS &&
+      Number(row.share_count) !== 0,
+  );
 }
 
 /**

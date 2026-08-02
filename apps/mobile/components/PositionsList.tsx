@@ -1,13 +1,17 @@
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { changeColor, ListRow, SectionTitle } from "@/components/ListRow";
 import { useTheme } from "@/hooks/useTheme";
 import { formatPercent, formatShares, formatSigned, formatUsd } from "@/lib/format";
+import type { ListTab } from "@/lib/drilldown";
 import type { AccountRow, HoldingRow } from "@/lib/positions";
-import { signalColors } from "@/utils/theme";
 
-export type ListTab = "holdings" | "accounts";
+export type { ListTab };
 
 interface Props {
+  /** Tabs belong to the portfolio level only — every narrower level has
+   * exactly one list, headed by a section title instead. */
+  showTabs: boolean;
   tab: ListTab;
   onSelectTab: (tab: ListTab) => void;
   holdings: HoldingRow[];
@@ -15,26 +19,42 @@ interface Props {
    * of the live list and shown under a collapsed disclosure instead. */
   closedHoldings: HoldingRow[];
   accounts: AccountRow[];
+  /** Uninvested cash in the selected account, at account level. Shown as
+   * the first row, ahead of the holdings
+   * (docs/design/dashboard_v2/behaviour.md § Navigation and scope). */
+  cash?: { value: number; subtitle: string } | null;
+  onSelectInstrument: (instrumentId: string) => void;
+  onSelectAccount: (accountId: string) => void;
+  onSelectCash?: () => void;
   isPending: boolean;
   errorMessage?: string | null;
 }
 
 /**
- * What you actually hold, below the chart: one row per Instrument
- * (Holdings) or per Account (Accounts).
+ * What you hold, below the chart: one row per Instrument (Holdings) or
+ * per Account (Accounts).
  *
- * Purely presentational — every figure is computed by `lib/positions.ts`
+ * The same component serves the portfolio and account levels — an account
+ * is the portfolio's Holdings list asking a narrower question, plus its
+ * cash row — which is why drilling down is a scope change rather than a
+ * route (behaviour.md § Navigation and scope).
+ *
+ * Purely presentational: every figure is computed by `lib/positions.ts`
  * and handed in, so the interesting logic is unit-testable without a
  * renderer. The closed-positions disclosure's open/closed flag is the one
- * piece of state that lives here, because nothing outside this component
- * reads it.
+ * piece of state that lives here, because nothing outside reads it.
  */
 export function PositionsList({
+  showTabs,
   tab,
   onSelectTab,
   holdings,
   closedHoldings,
   accounts,
+  cash,
+  onSelectInstrument,
+  onSelectAccount,
+  onSelectCash,
   isPending,
   errorMessage,
 }: Props) {
@@ -42,26 +62,35 @@ export function PositionsList({
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [showClosed, setShowClosed] = useState(false);
 
+  // Without tabs there is only ever the holdings list: the Accounts tab
+  // answers "which accounts do I have", which an account has already
+  // answered by being selected.
+  const showing: ListTab = showTabs ? tab : "holdings";
+
   return (
     <View testID="positions-list" style={styles.container}>
-      <View style={styles.tabs}>
-        <Tab
-          testID="tab-holdings"
-          label="Holdings"
-          count={holdings.length}
-          active={tab === "holdings"}
-          onPress={() => onSelectTab("holdings")}
-          styles={styles}
-        />
-        <Tab
-          testID="tab-accounts"
-          label="Accounts"
-          count={accounts.length}
-          active={tab === "accounts"}
-          onPress={() => onSelectTab("accounts")}
-          styles={styles}
-        />
-      </View>
+      {showTabs ? (
+        <View style={styles.tabs}>
+          <Tab
+            testID="tab-holdings"
+            label="Holdings"
+            count={holdings.length}
+            active={tab === "holdings"}
+            onPress={() => onSelectTab("holdings")}
+            styles={styles}
+          />
+          <Tab
+            testID="tab-accounts"
+            label="Accounts"
+            count={accounts.length}
+            active={tab === "accounts"}
+            onPress={() => onSelectTab("accounts")}
+            styles={styles}
+          />
+        </View>
+      ) : (
+        <SectionTitle>Holdings</SectionTitle>
+      )}
 
       {errorMessage ? (
         <Text testID="positions-error" style={styles.error}>
@@ -71,9 +100,23 @@ export function PositionsList({
         <View testID="positions-loading" style={styles.pending}>
           <ActivityIndicator color={theme.colors.primary} />
         </View>
-      ) : tab === "holdings" ? (
+      ) : showing === "holdings" ? (
         <>
-          {holdings.length === 0 && closedHoldings.length === 0 ? (
+          {cash ? (
+            <ListRow
+              testID="cash-row"
+              title="Cash"
+              subtitle={cash.subtitle}
+              value={formatUsd(cash.value)}
+              valueTestID="cash-value"
+              detail="—"
+              detailTestID="cash-detail"
+              detailColor={theme.colors.textTertiary}
+              onPress={onSelectCash}
+            />
+          ) : null}
+
+          {holdings.length === 0 && closedHoldings.length === 0 && !cash ? (
             <Text testID="positions-empty" style={styles.empty}>
               Nothing here yet. Add your first buy and it starts charting from
               that date.
@@ -81,7 +124,7 @@ export function PositionsList({
           ) : null}
 
           {holdings.map((row) => (
-            <Row
+            <ListRow
               key={row.instrumentId}
               testID={`holding-row-${row.instrumentId}`}
               title={row.symbol}
@@ -91,7 +134,7 @@ export function PositionsList({
               detail={formatPercent(row.changePercent)}
               detailTestID={`holding-percent-${row.instrumentId}`}
               detailColor={changeColor(row.changePercent, theme)}
-              styles={styles}
+              onPress={() => onSelectInstrument(row.instrumentId)}
             />
           ))}
 
@@ -113,7 +156,7 @@ export function PositionsList({
 
               {showClosed
                 ? closedHoldings.map((row) => (
-                    <Row
+                    <ListRow
                       key={row.instrumentId}
                       testID={`closed-row-${row.instrumentId}`}
                       title={row.symbol}
@@ -123,7 +166,7 @@ export function PositionsList({
                       detail={`realized ${formatSigned(row.realizedGain)}`}
                       detailTestID={`closed-realized-${row.instrumentId}`}
                       detailColor={changeColor(row.realizedGain, theme)}
-                      styles={styles}
+                      onPress={() => onSelectInstrument(row.instrumentId)}
                     />
                   ))
                 : null}
@@ -139,7 +182,7 @@ export function PositionsList({
           ) : null}
 
           {accounts.map((row) => (
-            <Row
+            <ListRow
               key={row.accountId}
               testID={`account-row-${row.accountId}`}
               title={row.name}
@@ -149,21 +192,13 @@ export function PositionsList({
               detail={formatPercent(row.changePercent)}
               detailTestID={`account-percent-${row.accountId}`}
               detailColor={changeColor(row.changePercent, theme)}
-              styles={styles}
+              onPress={() => onSelectAccount(row.accountId)}
             />
           ))}
         </>
       )}
     </View>
   );
-}
-
-function changeColor(
-  value: number | null,
-  theme: ReturnType<typeof useTheme>,
-): string {
-  if (value === null) return theme.colors.textTertiary;
-  return value >= 0 ? signalColors.up : signalColors.down;
 }
 
 type Styles = ReturnType<typeof makeStyles>;
@@ -197,47 +232,6 @@ function Tab({
   );
 }
 
-function Row({
-  testID,
-  title,
-  subtitle,
-  value,
-  valueTestID,
-  detail,
-  detailTestID,
-  detailColor,
-  styles,
-}: {
-  testID: string;
-  title: string;
-  subtitle: string;
-  value: string;
-  valueTestID: string;
-  detail: string;
-  detailTestID: string;
-  detailColor: string;
-  styles: Styles;
-}) {
-  return (
-    <View testID={testID} style={styles.row}>
-      <View style={styles.rowText}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        <Text style={styles.rowSubtitle} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      </View>
-      <View style={styles.rowValues}>
-        <Text testID={valueTestID} style={styles.rowValue}>
-          {value}
-        </Text>
-        <Text testID={detailTestID} style={[styles.rowDetail, { color: detailColor }]}>
-          {detail}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 function makeStyles(theme: ReturnType<typeof useTheme>) {
   return StyleSheet.create({
     container: { marginTop: theme.spacing.xl },
@@ -259,34 +253,6 @@ function makeStyles(theme: ReturnType<typeof useTheme>) {
       fontWeight: "500",
     },
     tabTextActive: { color: theme.colors.text },
-    row: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: theme.spacing.md,
-      paddingHorizontal: theme.spacing.lg,
-      paddingVertical: theme.spacing.md,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: theme.colors.borderLight,
-    },
-    rowText: { flexShrink: 1 },
-    rowTitle: {
-      color: theme.colors.text,
-      fontSize: theme.fontSize.lg,
-      fontWeight: "600",
-    },
-    rowSubtitle: {
-      color: theme.colors.textSecondary,
-      fontSize: theme.fontSize.sm,
-      marginTop: 2,
-    },
-    rowValues: { alignItems: "flex-end" },
-    rowValue: {
-      color: theme.colors.text,
-      fontSize: theme.fontSize.lg,
-      fontWeight: "500",
-    },
-    rowDetail: { fontSize: theme.fontSize.sm, marginTop: 2 },
     disclosure: {
       flexDirection: "row",
       alignItems: "center",

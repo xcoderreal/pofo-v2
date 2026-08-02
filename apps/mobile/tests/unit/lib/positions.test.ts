@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  accountHoldsInstruments,
   addSeries,
   buildAccountRows,
   buildHoldingRows,
+  buildInstrumentAccountRows,
+  buildInstrumentStats,
+  cashBalanceFor,
   pointsByGroup,
   rowChangePercent,
   splitClosed,
@@ -379,5 +383,247 @@ describe("splitClosed", () => {
 
     expect(live.map((r) => r.id)).toEqual(["a", "c"]);
     expect(closed.map((r) => r.id)).toEqual(["b"]);
+  });
+});
+
+describe("buildInstrumentAccountRows — the instrument level's breakdown", () => {
+  test("one row per account that has held the instrument", () => {
+    const rows = buildInstrumentAccountRows({
+      positions: [
+        position({ account_id: "acc1", market_value: "1300" }),
+        position({ account_id: "acc2", market_value: "2600" }),
+        position({ account_id: "acc1", instrument_id: "tsla" }),
+      ],
+      accounts: ACCOUNTS,
+      instrumentId: "goog",
+      pointsByAccount: {},
+      rangeStart: RANGE_START,
+    });
+
+    expect(rows.map((r) => r.accountId)).toEqual(["acc2", "acc1"]);
+    expect(rows[0].name).toBe("Cash Reserve");
+  });
+
+  test("accounts that never held it are absent, not zero rows", () => {
+    // The opposite of buildAccountRows: an unfunded account is a real
+    // thing you own, but an account that never touched GOOG is not part
+    // of your GOOG position.
+    const rows = buildInstrumentAccountRows({
+      positions: [position({ account_id: "acc1" })],
+      accounts: ACCOUNTS,
+      instrumentId: "goog",
+      pointsByAccount: {},
+      rangeStart: RANGE_START,
+    });
+
+    expect(rows).toHaveLength(1);
+  });
+
+  test("each row's percentage comes from its own account's series", () => {
+    const rows = buildInstrumentAccountRows({
+      positions: [position({ account_id: "acc1", market_value: "1500" })],
+      accounts: ACCOUNTS,
+      instrumentId: "goog",
+      pointsByAccount: { acc1: [{ timestamp: "2026-01-01", value: 1000 }] },
+      rangeStart: RANGE_START,
+    });
+
+    expect(rows[0].changePercent).toBeCloseTo(50, 10);
+  });
+
+  test("a closed row keeps its realized gain and reports no average cost", () => {
+    const rows = buildInstrumentAccountRows({
+      positions: [
+        position({
+          share_count: "0",
+          cost_basis: "0",
+          average_cost: null,
+          market_value: "0",
+          realized_gain: "3420",
+          unrealized_gain: "0",
+        }),
+      ],
+      accounts: ACCOUNTS,
+      instrumentId: "goog",
+      pointsByAccount: {},
+      rangeStart: RANGE_START,
+    });
+
+    expect(rows[0].shareCount).toBe(0);
+    expect(rows[0].averageCost).toBeNull();
+    expect(rows[0].realizedGain).toBe(3420);
+  });
+});
+
+describe("buildInstrumentStats — the six-field stat card", () => {
+  test("sums across every account holding the instrument", () => {
+    const stats = buildInstrumentStats(
+      [
+        position({
+          account_id: "acc1",
+          share_count: "10",
+          cost_basis: "1000",
+          market_value: "1300",
+          realized_gain: "50",
+          unrealized_gain: "300",
+        }),
+        position({
+          account_id: "acc2",
+          share_count: "30",
+          cost_basis: "3600",
+          market_value: "3900",
+          realized_gain: "0",
+          unrealized_gain: "300",
+        }),
+        position({ account_id: "acc1", instrument_id: "tsla" }),
+      ],
+      "goog",
+    );
+
+    expect(stats.shareCount).toBe(40);
+    expect(stats.costBasis).toBe(4600);
+    expect(stats.marketValue).toBe(5200);
+    expect(stats.realizedGain).toBe(50);
+    expect(stats.unrealizedGain).toBe(600);
+  });
+
+  test("market price is market value over shares — exactly the close", () => {
+    const stats = buildInstrumentStats(
+      [position({ share_count: "10", market_value: "1300" })],
+      "goog",
+    );
+
+    expect(stats.marketPrice).toBeCloseTo(130, 10);
+  });
+
+  test("average cost is cost basis over shares", () => {
+    const stats = buildInstrumentStats(
+      [position({ share_count: "40", cost_basis: "6000" })],
+      "goog",
+    );
+
+    expect(stats.averageCost).toBeCloseTo(150, 10);
+  });
+
+  test("a fully closed position has neither a market price nor an average cost", () => {
+    // Both are a division by zero shares. A $0 would read as a real
+    // price, which is worse than a dash.
+    const stats = buildInstrumentStats(
+      [
+        position({
+          share_count: "0",
+          cost_basis: "0",
+          average_cost: null,
+          market_value: "0",
+          realized_gain: "3420",
+        }),
+      ],
+      "goog",
+    );
+
+    expect(stats.marketPrice).toBeNull();
+    expect(stats.averageCost).toBeNull();
+    expect(stats.realizedGain).toBe(3420);
+  });
+
+  test("one unpriced account makes the whole card's value pending, not zero", () => {
+    const stats = buildInstrumentStats(
+      [
+        position({ account_id: "acc1", market_value: "1300", unrealized_gain: "300" }),
+        position({ account_id: "acc2", market_value: null, unrealized_gain: null }),
+      ],
+      "goog",
+    );
+
+    expect(stats.marketValue).toBeNull();
+    expect(stats.marketPrice).toBeNull();
+    expect(stats.unrealizedGain).toBeNull();
+  });
+});
+
+describe("cashBalanceFor", () => {
+  test("reads the account's CASH position, which is priced at exactly 1", () => {
+    const balance = cashBalanceFor({
+      positions: [
+        position({ account_id: "acc2", instrument_id: "cash", market_value: "53000" }),
+        position({ account_id: "acc1", instrument_id: "cash", market_value: "10" }),
+      ],
+      instruments: INSTRUMENTS,
+      accountId: "acc2",
+    });
+
+    expect(balance).toBe(53000);
+  });
+
+  test("an account that has never held cash has none, not zero", () => {
+    expect(
+      cashBalanceFor({
+        positions: [position({ account_id: "acc1" })],
+        instruments: INSTRUMENTS,
+        accountId: "acc1",
+      }),
+    ).toBeNull();
+  });
+
+  test("cash is found by asset class, not by the well-known id", () => {
+    const balance = cashBalanceFor({
+      positions: [
+        position({ account_id: "acc1", instrument_id: "usd", market_value: "42" }),
+      ],
+      instruments: [
+        { id: "usd", symbol: "USD", name: "Dollars", asset_class: "cash" },
+      ],
+      accountId: "acc1",
+    });
+
+    expect(balance).toBe(42);
+  });
+});
+
+describe("accountHoldsInstruments — auto-adjustment 1's predicate", () => {
+  test("a cash-only account holds nothing", () => {
+    expect(
+      accountHoldsInstruments({
+        positions: [
+          position({ account_id: "acc2", instrument_id: "cash", market_value: "53000" }),
+        ],
+        instruments: INSTRUMENTS,
+        accountId: "acc2",
+      }),
+    ).toBe(false);
+  });
+
+  test("a live equity position counts", () => {
+    expect(
+      accountHoldsInstruments({
+        positions: [position({ account_id: "acc1" })],
+        instruments: INSTRUMENTS,
+        accountId: "acc1",
+      }),
+    ).toBe(true);
+  });
+
+  test("a fully closed position does not count", () => {
+    // Zero shares chart as a flat zero under every holdings metric —
+    // exactly the blank the auto-adjustment exists to avoid.
+    expect(
+      accountHoldsInstruments({
+        positions: [
+          position({ account_id: "acc1", share_count: "0", realized_gain: "3420" }),
+        ],
+        instruments: INSTRUMENTS,
+        accountId: "acc1",
+      }),
+    ).toBe(false);
+  });
+
+  test("another account's holdings don't count", () => {
+    expect(
+      accountHoldsInstruments({
+        positions: [position({ account_id: "acc1" })],
+        instruments: INSTRUMENTS,
+        accountId: "acc2",
+      }),
+    ).toBe(false);
   });
 });
