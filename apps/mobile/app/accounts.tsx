@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useAccounts, useCreateAccount } from "@/hooks/useAccounts";
@@ -6,6 +7,7 @@ import { accountIdFromName } from "@/lib/accounts";
 const ACCOUNT_TYPES = ["brokerage", "ira", "crypto_exchange", "cash"] as const;
 
 export default function AccountsScreen() {
+  const router = useRouter();
   const accounts = useAccounts();
   const createAccount = useCreateAccount();
 
@@ -36,6 +38,14 @@ export default function AccountsScreen() {
 
   return (
     <View style={styles.container}>
+      <Pressable
+        testID="nav-transactions"
+        onPress={() => router.push("/transactions")}
+        style={styles.navButton}
+      >
+        <Text style={styles.buttonText}>Log transaction</Text>
+      </Pressable>
+
       <View testID="create-account-form" style={styles.form}>
         <TextInput
           testID="input-account-name"
@@ -141,6 +151,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 6,
     alignSelf: "flex-start",
+  },
+  navButton: {
+    backgroundColor: "#4a90d9",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignSelf: "flex-end",
+    margin: 12,
   },
   buttonText: { color: "#fff", fontWeight: "600" },
   error: { color: "#c0392b" },

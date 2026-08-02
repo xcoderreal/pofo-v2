@@ -12,6 +12,7 @@ export default function RootLayout() {
         <Stack>
           <Stack.Screen name="index" options={{ title: "Instruments" }} />
           <Stack.Screen name="accounts" options={{ title: "Accounts" }} />
+          <Stack.Screen name="transactions" options={{ title: "Transactions" }} />
         </Stack>
       </QueryClientProvider>
     </ThemeContext.Provider>

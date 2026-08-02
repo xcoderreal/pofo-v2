@@ -1,4 +1,7 @@
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
+from decimal import Decimal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,19 +10,38 @@ from pydantic import BaseModel
 from myapp.adapters.memory_repository import (
     MemoryAccountRepository,
     MemoryInstrumentRepository,
+    MemoryTransactionRepository,
 )
 from myapp.adapters.stub_auth_provider import StubAuthProvider
 from myapp.adapters.supabase_auth_provider import SupabaseAuthProvider
 from myapp.config import Settings
 from myapp.domain.auth import AuthenticationError, AuthProvider
-from myapp.domain.model import Account, AccountType, AssetClass, Instrument, User
-from myapp.domain.repository import AccountRepository, InstrumentRepository
+from myapp.domain.model import (
+    Account,
+    AccountType,
+    AssetClass,
+    Instrument,
+    Transaction,
+    TransactionType,
+    User,
+)
+from myapp.domain.position import InsufficientSharesError
+from myapp.domain.repository import (
+    AccountRepository,
+    InstrumentRepository,
+    TransactionRepository,
+)
 from myapp.service.account_service import AccountService
 from myapp.service.account_service import DuplicateIdError as AccountDuplicateIdError
 from myapp.service.instrument_service import (
     DuplicateIdError as InstrumentDuplicateIdError,
 )
 from myapp.service.instrument_service import DuplicateSymbolError, InstrumentService
+from myapp.service.transaction_service import (
+    AccountNotFoundError,
+    InstrumentNotFoundError,
+    TransactionService,
+)
 
 
 def _build_auth_provider(settings: Settings) -> AuthProvider:
@@ -42,6 +64,7 @@ async def lifespan(app: FastAPI):
     settings = Settings()
     app.state.instrument_repo = MemoryInstrumentRepository()
     app.state.account_repo = MemoryAccountRepository()
+    app.state.transaction_repo = MemoryTransactionRepository()
     app.state.auth_provider = _build_auth_provider(settings)
     yield
 
@@ -248,6 +271,117 @@ def create_account(
     except AccountDuplicateIdError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _to_account_response(account)
+
+
+# ─── Transaction dependencies ──────────────────────────────────
+
+
+def get_transaction_repo(request: Request) -> TransactionRepository:
+    return request.app.state.transaction_repo
+
+
+def get_transaction_service(
+    transaction_repo: TransactionRepository = Depends(get_transaction_repo),
+    account_repo: AccountRepository = Depends(get_account_repo),
+    instrument_repo: InstrumentRepository = Depends(get_instrument_repo),
+) -> TransactionService:
+    return TransactionService(
+        transaction_repo=transaction_repo,
+        account_repo=account_repo,
+        instrument_repo=instrument_repo,
+    )
+
+
+# ─── Transaction schemas ────────────────────────────────────────
+
+
+class CreateTransactionRequest(BaseModel):
+    account_id: str
+    instrument_id: str
+    type: TransactionType
+    quantity: Decimal
+    price: Decimal
+    timestamp: datetime
+
+
+class TransactionResponse(BaseModel):
+    id: str
+    account_id: str
+    instrument_id: str
+    type: TransactionType
+    quantity: Decimal
+    price: Decimal
+    timestamp: datetime
+
+
+class PositionResponse(BaseModel):
+    account_id: str
+    instrument_id: str
+    share_count: Decimal
+    cost_basis: Decimal
+
+
+def _to_transaction_response(transaction: Transaction) -> TransactionResponse:
+    return TransactionResponse(
+        id=transaction.id,
+        account_id=transaction.account_id,
+        instrument_id=transaction.instrument_id,
+        type=transaction.type,
+        quantity=transaction.quantity,
+        price=transaction.price,
+        timestamp=transaction.timestamp,
+    )
+
+
+# ─── Transaction routes ─────────────────────────────────────────
+# Transaction ids are server-generated (uuid4) — unlike Instrument/Account,
+# a ledger entry has no natural client-chosen identity to deduplicate on.
+
+
+@app.post("/transactions", response_model=TransactionResponse, status_code=201)
+def create_transaction(
+    request: CreateTransactionRequest,
+    current_user: User = Depends(get_current_user),
+    service: TransactionService = Depends(get_transaction_service),
+):
+    transaction = Transaction(
+        id=str(uuid.uuid4()),
+        user_id=current_user.id,
+        account_id=request.account_id,
+        instrument_id=request.instrument_id,
+        type=request.type,
+        quantity=request.quantity,
+        price=request.price,
+        timestamp=request.timestamp,
+    )
+    try:
+        service.log_transaction(transaction)
+    except (AccountNotFoundError, InstrumentNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InsufficientSharesError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _to_transaction_response(transaction)
+
+
+@app.get(
+    "/accounts/{account_id}/instruments/{instrument_id}/position",
+    response_model=PositionResponse,
+)
+def get_position(
+    account_id: str,
+    instrument_id: str,
+    current_user: User = Depends(get_current_user),
+    service: TransactionService = Depends(get_transaction_service),
+):
+    position = service.get_position(account_id, instrument_id, user_id=current_user.id)
+    if position is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return PositionResponse(
+        account_id=position.account_id,
+        instrument_id=position.instrument_id,
+        share_count=position.share_count,
+        cost_basis=position.cost_basis,
+    )
 
 
 # ─── Health ───────────────────────────────────────────────────

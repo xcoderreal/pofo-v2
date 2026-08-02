@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 
 
@@ -39,3 +41,20 @@ class Account:
     name: str
     institution: str
     account_type: AccountType
+
+
+class TransactionType(StrEnum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+@dataclass
+class Transaction:
+    id: str
+    user_id: str
+    account_id: str
+    instrument_id: str
+    type: TransactionType
+    quantity: Decimal
+    price: Decimal
+    timestamp: datetime

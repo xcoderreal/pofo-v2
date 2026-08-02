@@ -222,6 +222,92 @@
         }
       }
     },
+    "/transactions": {
+      "post": {
+        "summary": "Create Transaction",
+        "operationId": "create_transaction_transactions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTransactionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{account_id}/instruments/{instrument_id}/position": {
+      "get": {
+        "summary": "Get Position",
+        "operationId": "get_position_accounts__account_id__instruments__instrument_id__position_get",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "instrument_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Instrument Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -342,6 +428,60 @@
         ],
         "title": "CreateInstrumentRequest"
       },
+      "CreateTransactionRequest": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "instrument_id": {
+            "type": "string",
+            "title": "Instrument Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TransactionType"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Price"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "instrument_id",
+          "type",
+          "quantity",
+          "price",
+          "timestamp"
+        ],
+        "title": "CreateTransactionRequest"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -381,6 +521,89 @@
           "asset_class"
         ],
         "title": "InstrumentResponse"
+      },
+      "PositionResponse": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "instrument_id": {
+            "type": "string",
+            "title": "Instrument Id"
+          },
+          "share_count": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Share Count"
+          },
+          "cost_basis": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost Basis"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "instrument_id",
+          "share_count",
+          "cost_basis"
+        ],
+        "title": "PositionResponse"
+      },
+      "TransactionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "instrument_id": {
+            "type": "string",
+            "title": "Instrument Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TransactionType"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Quantity"
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "instrument_id",
+          "type",
+          "quantity",
+          "price",
+          "timestamp"
+        ],
+        "title": "TransactionResponse"
+      },
+      "TransactionType": {
+        "type": "string",
+        "enum": [
+          "buy",
+          "sell"
+        ],
+        "title": "TransactionType"
       },
       "ValidationError": {
         "properties": {

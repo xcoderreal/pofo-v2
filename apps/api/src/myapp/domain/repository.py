@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from myapp.domain.model import Account, Instrument
+from myapp.domain.model import Account, Instrument, Transaction
 
 
 class InstrumentRepository(ABC):
@@ -26,3 +26,13 @@ class AccountRepository(ABC):
 
     @abstractmethod
     def add(self, account: Account) -> None: ...
+
+
+class TransactionRepository(ABC):
+    @abstractmethod
+    def list_by_account_instrument(
+        self, account_id: str, instrument_id: str
+    ) -> list[Transaction]: ...
+
+    @abstractmethod
+    def add(self, transaction: Transaction) -> None: ...

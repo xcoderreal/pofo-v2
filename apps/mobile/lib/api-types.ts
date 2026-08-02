@@ -91,6 +91,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Transaction */
+        post: operations["create_transaction_transactions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/accounts/{account_id}/instruments/{instrument_id}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Position */
+        get: operations["get_position_accounts__account_id__instruments__instrument_id__position_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -152,6 +186,23 @@ export interface components {
             name: string;
             asset_class: components["schemas"]["AssetClass"];
         };
+        /** CreateTransactionRequest */
+        CreateTransactionRequest: {
+            /** Account Id */
+            account_id: string;
+            /** Instrument Id */
+            instrument_id: string;
+            type: components["schemas"]["TransactionType"];
+            /** Quantity */
+            quantity: number | string;
+            /** Price */
+            price: number | string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -167,6 +218,41 @@ export interface components {
             name: string;
             asset_class: components["schemas"]["AssetClass"];
         };
+        /** PositionResponse */
+        PositionResponse: {
+            /** Account Id */
+            account_id: string;
+            /** Instrument Id */
+            instrument_id: string;
+            /** Share Count */
+            share_count: string;
+            /** Cost Basis */
+            cost_basis: string;
+        };
+        /** TransactionResponse */
+        TransactionResponse: {
+            /** Id */
+            id: string;
+            /** Account Id */
+            account_id: string;
+            /** Instrument Id */
+            instrument_id: string;
+            type: components["schemas"]["TransactionType"];
+            /** Quantity */
+            quantity: string;
+            /** Price */
+            price: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+        };
+        /**
+         * TransactionType
+         * @enum {string}
+         */
+        TransactionType: "buy" | "sell";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -366,6 +452,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_transaction_transactions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTransactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_position_accounts__account_id__instruments__instrument_id__position_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PositionResponse"];
                 };
             };
             /** @description Validation Error */
