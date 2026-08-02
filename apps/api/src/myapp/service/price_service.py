@@ -41,13 +41,27 @@ class PriceService:
         # requested range to further in the past). Historical bars are
         # immutable once past — this isn't a freshness question, so it's
         # not gated by is_fetch_worth_attempting's staleness policy, only
-        # by "do we have it yet."
-        if earliest_cached is not None and start < earliest_cached:
+        # by "have we asked for it yet."
+        #
+        # "Asked", not "have it": a window with no bars in it — a weekend,
+        # a holiday, the seven days query_service reaches back to resolve a
+        # non-trading range boundary — leaves `start < earliest_cached`
+        # permanently true, so keying the branch on cached data alone made
+        # every repeat of the same request issue another upstream fetch.
+        # The floor is the earliest date the source has already been asked
+        # about, which is the fact that actually settles the question.
+        backfill_floor = self.price_history_repo.get_backfill_floor(instrument_id)
+        if (
+            earliest_cached is not None
+            and start < earliest_cached
+            and (backfill_floor is None or start < backfill_floor)
+        ):
             new_bars = self.price_source.fetch_history(
                 instrument.symbol, start, earliest_cached - timedelta(days=1)
             )
             if new_bars:
                 self.price_history_repo.add_bars(instrument_id, new_bars)
+            self._lower_backfill_floor(instrument_id, start)
             fetched_anything = True
 
         # Forward gap: possibly-new data since the last check. This IS a
@@ -66,6 +80,12 @@ class PriceService:
                 if new_bars:
                     self.price_history_repo.add_bars(instrument_id, new_bars)
                 self.price_history_repo.set_last_fetched_at(instrument_id, now)
+                # The very first fetch for an instrument comes through here
+                # with nothing cached, so it starts at `start` and is what
+                # establishes the floor — otherwise the next identical call
+                # would re-ask the backward branch for a window this one
+                # already covered.
+                self._lower_backfill_floor(instrument_id, forward_gap_start)
                 fetched_anything = True
 
         if fetched_anything:
@@ -74,6 +94,14 @@ class PriceService:
         return sorted(
             (b for b in cached_bars if start <= b.date <= end), key=lambda b: b.date
         )
+
+    def _lower_backfill_floor(self, instrument_id: str, start: date) -> None:
+        """Move the "already asked this far back" mark earlier, never
+        later — a fetch that began at a *later* date says nothing new
+        about the window below the existing floor."""
+        current = self.price_history_repo.get_backfill_floor(instrument_id)
+        if current is None or start < current:
+            self.price_history_repo.set_backfill_floor(instrument_id, start)
 
     def get_latest_price(self, instrument_id: str) -> PriceBar | None:
         """The most recent known price for an instrument. CASH is priced

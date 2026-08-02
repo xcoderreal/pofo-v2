@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -182,6 +182,52 @@ class TestGetPriceHistory:
 
         with pytest.raises(InstrumentNotFoundError):
             service.get_price_history("missing", D0, D2)
+
+    def test_a_backward_gap_that_holds_no_bars_is_attempted_once_not_forever(
+        self,
+    ) -> None:
+        """The bug this guards against: query_service asks for
+        `start - 7 days` so a range boundary landing on a weekend still
+        resolves to the previous close (see _PRICE_START_LOOKBACK). When
+        those seven days genuinely hold no bars, `start < earliest_cached`
+        stays true forever — and an ungated backward branch turned N
+        identical dashboard loads into N upstream fetches, growing without
+        bound per (account, instrument) pair.
+
+        Bounded, not zero: the first call must still try, because "no bars
+        cached before D1" and "no bars exist before D1" are the same
+        observation until someone asks."""
+        source = FakePriceSource(
+            {
+                "GOOG": [
+                    PriceBar(date=D1, close=Decimal("101")),
+                    PriceBar(date=D2, close=Decimal("102")),
+                ]
+            }
+        )
+        repo = FakePriceHistoryRepository()
+        service = _service(source, price_history_repo=repo)
+        lookback_start = D1 - timedelta(days=7)
+
+        for _ in range(3):
+            bars = service.get_price_history("goog", lookback_start, D2)
+
+        assert len(source.calls) == 1
+        assert [b.close for b in bars] == [Decimal("101"), Decimal("102")]
+
+    def test_a_still_earlier_start_reopens_the_backward_gap(self) -> None:
+        """The floor records how far back the source has been asked, not
+        "asked once, never again" — widening the range past that floor is
+        a genuinely new question."""
+        source = FakePriceSource({"GOOG": [PriceBar(date=D2, close=Decimal("102"))]})
+        repo = FakePriceHistoryRepository()
+        service = _service(source, price_history_repo=repo)
+
+        service.get_price_history("goog", D1, D2)
+        service.get_price_history("goog", D1, D2)
+        service.get_price_history("goog", D0, D2)
+
+        assert source.calls == [("GOOG", D1, D2), ("GOOG", D0, D1)]
 
     def test_empty_fetch_result_still_records_the_attempt(self) -> None:
         """A symbol with no trading on the requested days (e.g. a weekend

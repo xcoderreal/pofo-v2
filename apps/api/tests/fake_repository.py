@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from myapp.domain.model import Account, Instrument, Transaction
 from myapp.domain.price import PriceBar
@@ -71,6 +71,7 @@ class FakePriceHistoryRepository(PriceHistoryRepository):
     def __init__(self) -> None:
         self._bars: dict[str, list[PriceBar]] = {}
         self._last_fetched_at: dict[str, datetime] = {}
+        self._backfill_floor: dict[str, date] = {}
 
     def get_bars(self, instrument_id: str) -> list[PriceBar]:
         return list(self._bars.get(instrument_id, []))
@@ -83,3 +84,9 @@ class FakePriceHistoryRepository(PriceHistoryRepository):
 
     def set_last_fetched_at(self, instrument_id: str, when: datetime) -> None:
         self._last_fetched_at[instrument_id] = when
+
+    def get_backfill_floor(self, instrument_id: str) -> date | None:
+        return self._backfill_floor.get(instrument_id)
+
+    def set_backfill_floor(self, instrument_id: str, start: date) -> None:
+        self._backfill_floor[instrument_id] = start

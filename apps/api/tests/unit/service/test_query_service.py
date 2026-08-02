@@ -552,6 +552,44 @@ class TestRangeStartOnANonTradingDay:
 
         assert [p.timestamp for p in result[0].points] == [D(2026, 1, 5)]
 
+    def test_repeating_the_same_query_does_not_repeat_the_upstream_fetch(self) -> None:
+        """The bug this guards against: reaching back seven days from
+        `start` puts the requested window permanently below the earliest
+        bar that exists, so the price cache can never "close" that gap.
+        With the backward fetch keyed on cached data alone, three
+        identical dashboard loads issued one, two and three upstream
+        fetches — unbounded growth, per (account, instrument) pair, from a
+        screen that is simply being re-rendered."""
+        transactions = [_buy("t1", "acc1", "goog", "10", "100", (2025, 12, 1))]
+        source = FakePriceSource(
+            {
+                "GOOG": [
+                    PriceBar(date=D(2026, 1, 2), close=Decimal("120")),
+                    PriceBar(date=D(2026, 1, 5), close=Decimal("130")),
+                ]
+            }
+        )
+        service = _service(transactions=transactions, price_source=source)
+
+        for _ in range(3):
+            result = service.query_timeseries(
+                user_id="user-a",
+                metric=Metric.EQUITY,
+                instruments=["goog"],
+                accounts=["acc1"],
+                group_by=GroupBy.NONE,
+                start=D(2026, 1, 3),
+                end=D(2026, 1, 10),
+                granularity=Granularity.DAILY,
+                mode=Mode.POINT_IN_TIME,
+            )
+
+        assert len(source.calls) == 1
+        # And the answer is unchanged — the fix is about not re-asking,
+        # not about asking for less.
+        values = {p.timestamp: p.value for p in result[0].points}
+        assert values[D(2026, 1, 3)] == Decimal("1200")
+
 
 class TestCashBalance:
     def test_always_targets_cash_when_instruments_is_omitted_or_all(self) -> None:

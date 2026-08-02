@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import date, datetime
 
 from myapp.domain.model import Account, Instrument, Transaction
 from myapp.domain.price import PriceBar
@@ -52,3 +52,9 @@ class PriceHistoryRepository(ABC):
 
     @abstractmethod
     def set_last_fetched_at(self, instrument_id: str, when: datetime) -> None: ...
+
+    @abstractmethod
+    def get_backfill_floor(self, instrument_id: str) -> date | None: ...
+
+    @abstractmethod
+    def set_backfill_floor(self, instrument_id: str, start: date) -> None: ...

@@ -125,6 +125,18 @@ The service validates `(metric, mode)` against this table and rejects invalid pa
 
 **`instruments="all"` excludes `CASH` for `equity`, `cost_basis`, and `unrealized_gain`.** These are summed-dollar metrics: since an ordinary trade now moves money *out of* the `CASH` position and *into* the traded instrument's cost basis (see above), including `CASH` in a portfolio-wide `equity`/`cost_basis` total would double-count every dollar currently invested. `share_count`, `cash_balance`, and `market_price` are unaffected — the double-counting problem is specific to summed dollar totals, not to a per-instrument breakdown. This only narrows what `"all"` expands to; an explicit `instruments=["cash"]` request for one of these metrics is still answered (trivially, since `CASH`'s cost basis always equals its share count).
 
+### The price window reaches 7 days before `start`
+
+The price lookup behind a range is not `[start, end]` — it is `[start − 7 days, end]`.
+
+A requested range very often *starts* on a day with no bar: a Saturday, a holiday, the 1st of January. A holding's value on a Saturday is Friday's close, not "unknown", so without the lookback the first boundary is silently dropped — and every range-scoped comparison then measures from the first *trading* day rather than from the range start. The header percentage and the Holdings/Accounts row percentages are both defined against the range start, so that shift is visible and wrong.
+
+Seven days is the same "cross a weekend or a short holiday" window `PriceService.get_latest_price` uses.
+
+It does **not** make the result denser. Only the *first* boundary can ever see those earlier bars: every interior boundary's candidate window is bounded below by the previous boundary, so a real mid-range gap stays a gap and nothing is carried forward across it. Nor does it resurrect a position — a boundary before the pair's first transaction is skipped regardless of what price exists.
+
+Consequence for the price cache: a window that legitimately holds no bars must be remembered as *asked*, not inferred from what is *cached*. `PriceHistoryRepository.get_backfill_floor` exists for exactly that — otherwise `start − 7 days` landing before the earliest bar that will ever exist leaves the backward gap permanently open, and every repeat of the same query issues another upstream fetch.
+
 ### Result shape
 
 Sparse, real-timestamped points — **not** a dense/gap-filled array. The frontend chart derives x-position from real timestamps (nearest-point lookup from pointer/tap position), not array index, so there's no requirement to pad non-trading days with carried-forward values.
