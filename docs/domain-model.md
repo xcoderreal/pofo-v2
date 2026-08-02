@@ -141,6 +141,19 @@ Consequence for the price cache: a window that legitimately holds no bars must b
 
 Sparse, real-timestamped points — **not** a dense/gap-filled array. The frontend chart derives x-position from real timestamps (nearest-point lookup from pointer/tap position), not array index, so there's no requirement to pad non-trading days with carried-forward values.
 
+### Combining a group's series: carry a Level forward, read a Flow as zero
+
+`group_by` folds many (account, instrument) series into one, and those series are sparse *independently* — a price metric is only sampled at boundaries where that instrument has a bar, and each pair starts at its own first transaction. So a timestamp present in some contributing series and absent from others is the normal case, not an anomaly. Summing only the series that happen to carry a point there yields a **partial sum presented as a whole-portfolio figure**: a 1Y `equity` chart ending on a Sunday dropped to the crypto holding alone on its final point, because the equities had no weekend bar — and the headline change figure is computed against that point.
+
+Two rules, both following from the Level/Flow table above:
+
+- **Before** a series' first sample it contributes **zero**. A position that did not exist yet genuinely contributed nothing, and carrying a value *backwards* would fabricate history — including the range-start sample every range-scoped percentage is defined against.
+- **After** it, a **Level** contributes its **last known value**. A holding you still own is still worth its last close; it did not become worthless because the market was shut. A **Flow** in `delta_per_period` contributes **zero** instead — that figure is the amount booked *inside* the bucket, so carrying it forward would book the same gain again in every later bucket. `cumulative` is a running total, which is a stock again and carries forward like a Level.
+
+This is **not** the gap-padding that `Result shape` rules out, and the distinction is the whole point: the combined series' timestamps are still exactly the union of what the contributing series really sampled. Nothing is invented, and a boundary that *no* series sampled stays absent. Carry-forward only supplies a *value* at a boundary the group already emits.
+
+`addSeries` in `apps/mobile/lib/positions.ts` applies the same rule client-side and is **not** redundant with this: the client adds `equity` + `cash_balance`, two different metrics from two separate requests, which the server never combines. `cash_balance` is dense while `equity` is price-sparse, so the mismatch survives at exactly the same final boundary.
+
 ## Non-goals for this doc
 
 See [`docs/non-goals.md`](non-goals.md) for the full list with reasoning: corporate actions (splits/dividends/mergers), CSV import, multiple price providers, cron-based price sync, LIFO/highest-cost lot matching, and the conversational/reasoner interface.

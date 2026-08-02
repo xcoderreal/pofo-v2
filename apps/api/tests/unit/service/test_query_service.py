@@ -872,3 +872,226 @@ class TestAllScopeExcludesCashForDollarMetrics:
         )
 
         assert result[0].points[0].value == Decimal("10000")
+
+
+BTC = Instrument(id="btc", symbol="BTC", name="Bitcoin", asset_class=AssetClass.CRYPTO)
+
+
+class TestCombiningSparseSeries:
+    """A group's contributing series are sparse *independently* — a price
+    metric is only sampled at boundaries where that instrument has a bar,
+    and every pair starts at its own first transaction. Reading an absent
+    sample as zero turns the group total into a partial sum over whichever
+    series happened to have a bar there."""
+
+    def test_a_level_series_missing_the_final_boundary_is_carried_forward(
+        self,
+    ) -> None:
+        # The reported repro (#20): Feb 1 2026 is a Sunday. The equity
+        # holding has no bar, crypto does — so the whole-portfolio total
+        # collapsed to the crypto holding alone on the last point, and
+        # the headline change figure is computed against that point.
+        transactions = [
+            _buy("t1", "acc1", "goog", "10", "100", (2026, 1, 1)),
+            _buy("t2", "acc1", "btc", "2", "1000", (2026, 1, 1)),
+        ]
+        source = FakePriceSource(
+            {
+                "GOOG": [PriceBar(date=D(2026, 1, 30), close=Decimal("120"))],
+                "BTC": [
+                    PriceBar(date=D(2026, 1, 30), close=Decimal("1100")),
+                    PriceBar(date=D(2026, 2, 1), close=Decimal("1200")),
+                ],
+            }
+        )
+        service = _service(
+            instruments=[GOOG, BTC, CASH],
+            transactions=transactions,
+            price_source=source,
+        )
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.EQUITY,
+            instruments="all",
+            accounts="all",
+            group_by=GroupBy.NONE,
+            start=D(2026, 1, 30),
+            end=D(2026, 2, 1),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        values = {p.timestamp: p.value for p in result[0].points}
+        assert values[D(2026, 1, 30)] == Decimal("3400")  # 1200 GOOG + 2200 BTC
+        # GOOG has no Sunday bar. It is still worth Friday's close — it did
+        # not become worthless because the market was shut.
+        assert values[D(2026, 2, 1)] == Decimal("3600")  # 1200 GOOG + 2400 BTC
+
+    def test_no_boundary_is_invented_that_no_series_sampled(self) -> None:
+        """Carrying a value onto a boundary the group *already* emits is
+        not gap-padding (behaviour.md § Chart): Jan 31 is sampled by
+        neither series and must stay absent."""
+        transactions = [
+            _buy("t1", "acc1", "goog", "10", "100", (2026, 1, 1)),
+            _buy("t2", "acc1", "btc", "2", "1000", (2026, 1, 1)),
+        ]
+        source = FakePriceSource(
+            {
+                "GOOG": [PriceBar(date=D(2026, 1, 30), close=Decimal("120"))],
+                "BTC": [
+                    PriceBar(date=D(2026, 1, 30), close=Decimal("1100")),
+                    PriceBar(date=D(2026, 2, 1), close=Decimal("1200")),
+                ],
+            }
+        )
+        service = _service(
+            instruments=[GOOG, BTC, CASH],
+            transactions=transactions,
+            price_source=source,
+        )
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.EQUITY,
+            instruments="all",
+            accounts="all",
+            group_by=GroupBy.NONE,
+            start=D(2026, 1, 30),
+            end=D(2026, 2, 1),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        assert [p.timestamp for p in result[0].points] == [
+            D(2026, 1, 30),
+            D(2026, 2, 1),
+        ]
+
+    def test_a_series_contributes_zero_before_its_own_first_sample(self) -> None:
+        """A position that did not exist yet contributes nothing —
+        carrying its value *backwards* would fabricate history, and the
+        range-start sample is exactly the denominator every range-scoped
+        percentage is defined against (behaviour.md § Percentages)."""
+        transactions = [
+            _buy("t1", "acc1", "goog", "10", "100", (2026, 1, 1)),
+            _buy("t2", "acc1", "aapl", "3", "50", (2026, 2, 1)),
+        ]
+        source = FakePriceSource(
+            {
+                "GOOG": [
+                    PriceBar(date=D(2026, 1, 1), close=Decimal("100")),
+                    PriceBar(date=D(2026, 2, 1), close=Decimal("120")),
+                ],
+                "AAPL": [PriceBar(date=D(2026, 2, 1), close=Decimal("50"))],
+            }
+        )
+        service = _service(transactions=transactions, price_source=source)
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.EQUITY,
+            instruments="all",
+            accounts="all",
+            group_by=GroupBy.NONE,
+            start=D(2026, 1, 1),
+            end=D(2026, 2, 1),
+            granularity=Granularity.MONTHLY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        values = {p.timestamp: p.value for p in result[0].points}
+        assert values[D(2026, 1, 1)] == Decimal("1000")  # GOOG alone — no AAPL yet
+        assert values[D(2026, 2, 1)] == Decimal("1350")  # 1200 + 150
+
+    def test_group_by_account_carries_each_accounts_holdings_forward(self) -> None:
+        """The Grid's per-account sparklines hit the same boundary: an
+        account holding only equities must not read as zero on a day the
+        market was shut."""
+        transactions = [
+            _buy("t1", "acc1", "goog", "10", "100", (2026, 1, 1)),
+            _buy("t2", "acc1", "btc", "2", "1000", (2026, 1, 1)),
+        ]
+        source = FakePriceSource(
+            {
+                "GOOG": [PriceBar(date=D(2026, 1, 30), close=Decimal("120"))],
+                "BTC": [
+                    PriceBar(date=D(2026, 1, 30), close=Decimal("1100")),
+                    PriceBar(date=D(2026, 2, 1), close=Decimal("1200")),
+                ],
+            }
+        )
+        service = _service(
+            instruments=[GOOG, BTC, CASH],
+            transactions=transactions,
+            price_source=source,
+        )
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.EQUITY,
+            instruments="all",
+            accounts="all",
+            group_by=GroupBy.ACCOUNT,
+            start=D(2026, 1, 30),
+            end=D(2026, 2, 1),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        values = {p.timestamp: p.value for p in result[0].points}
+        assert values[D(2026, 2, 1)] == Decimal("3600")
+
+    def test_a_per_period_flow_reads_an_absent_bucket_as_zero(self) -> None:
+        """realized_gain in delta_per_period is a Flow: the gain booked
+        *within* that bucket. A bucket with no sale earned nothing —
+        carrying the previous bucket's gain forward would book it twice."""
+        transactions = [
+            _buy("t1", "acc1", "goog", "10", "100", (2026, 1, 1)),
+            _sell("t2", "acc1", "goog", "10", "150", (2026, 1, 15)),
+            _buy("t3", "acc1", "aapl", "10", "50", (2026, 1, 1)),
+            _sell("t4", "acc1", "aapl", "10", "60", (2026, 2, 15)),
+        ]
+        service = _service(transactions=transactions)
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.REALIZED_GAIN,
+            instruments="all",
+            accounts="all",
+            group_by=GroupBy.NONE,
+            start=D(2026, 1, 1),
+            end=D(2026, 3, 1),
+            granularity=Granularity.MONTHLY,
+            mode=Mode.DELTA_PER_PERIOD,
+        )
+
+        values = {p.timestamp: p.value for p in result[0].points}
+        # GOOG booked 500 in the January bucket, AAPL 100 in February.
+        assert values[D(2026, 2, 1)] == Decimal("500")
+        assert values[D(2026, 3, 1)] == Decimal("100")
+
+    def test_a_cumulative_flow_is_a_running_total_and_sums_across_groups(self) -> None:
+        transactions = [
+            _buy("t1", "acc1", "goog", "10", "100", (2026, 1, 1)),
+            _sell("t2", "acc1", "goog", "10", "150", (2026, 1, 15)),
+            _buy("t3", "acc1", "aapl", "10", "50", (2026, 1, 1)),
+            _sell("t4", "acc1", "aapl", "10", "60", (2026, 2, 15)),
+        ]
+        service = _service(transactions=transactions)
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.REALIZED_GAIN,
+            instruments="all",
+            accounts="all",
+            group_by=GroupBy.NONE,
+            start=D(2026, 1, 1),
+            end=D(2026, 3, 1),
+            granularity=Granularity.MONTHLY,
+            mode=Mode.CUMULATIVE,
+        )
+
+        values = {p.timestamp: p.value for p in result[0].points}
+        assert values[D(2026, 2, 1)] == Decimal("500")
+        assert values[D(2026, 3, 1)] == Decimal("600")  # 500 + 100

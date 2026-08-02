@@ -129,7 +129,7 @@ class QueryService:
                     group=instrument_id, points=points
                 )
 
-        return self._group(raw, group_by)
+        return self._group(raw, group_by, carry_forward=_carries_forward(metric, mode))
 
     # ─── Scope resolution ────────────────────────────────────────
 
@@ -326,7 +326,11 @@ class QueryService:
     # ─── Grouping ────────────────────────────────────────────────
 
     def _group(
-        self, raw: dict[tuple[str | None, str], Series], group_by: GroupBy
+        self,
+        raw: dict[tuple[str | None, str], Series],
+        group_by: GroupBy,
+        *,
+        carry_forward: bool,
     ) -> list[Series]:
         buckets: dict[str, list[Series]] = {}
         for (account_id, instrument_id), series in raw.items():
@@ -340,7 +344,7 @@ class QueryService:
 
         result = []
         for group_name, series_list in buckets.items():
-            combined = _combine(series_list, group_name)
+            combined = _combine(series_list, group_name, carry_forward=carry_forward)
             if combined is not None:
                 result.append(combined)
         return result
@@ -367,14 +371,76 @@ def _resample_price(
     return result
 
 
-def _combine(series_list: list[Series], group_name: str) -> Series | None:
-    by_date: dict[date, Decimal] = {}
-    for series in series_list:
-        for point in series.points:
-            by_date[point.timestamp] = (
-                by_date.get(point.timestamp, Decimal(0)) + point.value
-            )
-    if not by_date:
+def _carries_forward(metric: Metric, mode: Mode) -> bool:
+    """Whether a contributing series with no sample at a combined
+    boundary contributes its **last known value** or **zero**.
+
+    A Level is a stock: a holding you still own is still worth its last
+    close, so an absent sample means "unchanged", not "gone". A Flow in
+    `delta_per_period` is the amount booked *inside* that bucket — a
+    bucket with no sale earned nothing, and carrying the previous
+    bucket's figure forward would book the same gain again in every
+    later bucket. `cumulative` is a running total, which is a stock
+    again and behaves like a Level.
+    """
+    if metric_kind(metric) == MetricKind.LEVEL:
+        return True
+    return mode == Mode.CUMULATIVE
+
+
+def _combine(
+    series_list: list[Series], group_name: str, *, carry_forward: bool
+) -> Series | None:
+    """Sum a group's contributing series over the **union** of their
+    timestamps.
+
+    The series are sparse *independently*: a price metric is only sampled
+    at boundaries where that instrument has a bar, and every (account,
+    instrument) pair starts at its own first transaction. So a timestamp
+    present in some series and absent from others is the normal case —
+    the last boundary of a range ending on a Sunday is carried by a
+    crypto holding and not by an equity one — and reading that absence as
+    zero makes the group total a **partial sum over whichever series
+    happened to have a bar there**, presented as a whole-portfolio
+    figure.
+
+    Two rules, both following from Level-vs-Flow (`_carries_forward`):
+
+    - **Before** a series' first sample it contributes zero. A position
+      that did not exist yet genuinely contributed nothing, and carrying
+      a value backwards would fabricate history — including the
+      range-start sample every range-scoped percentage is defined
+      against (behaviour.md § Percentages).
+    - **After** it, a Level contributes its last known value.
+
+    This is *not* the gap-padding that behaviour.md § Chart forbids, and
+    the distinction is the whole point: the result's timestamps are still
+    exactly the union of what the contributing series really sampled —
+    nothing is invented, and a boundary no series sampled stays absent.
+    Carry-forward only fills a *value* at a boundary the group already
+    emits. Do not "simplify" this back into a plain sum; that is the bug
+    this replaced. The mirror rule on the client is `addSeries` in
+    `apps/mobile/lib/positions.ts`.
+    """
+    timestamps = sorted({point.timestamp for s in series_list for point in s.points})
+    if not timestamps:
         return None
-    points = [TimeSeriesPoint(timestamp=d, value=v) for d, v in sorted(by_date.items())]
-    return Series(group=group_name, points=points)
+
+    totals = dict.fromkeys(timestamps, Decimal(0))
+    for series in series_list:
+        by_date = {point.timestamp: point.value for point in series.points}
+        carried: Decimal | None = None
+        for timestamp in timestamps:
+            value = by_date.get(timestamp)
+            if value is None:
+                # None => before this series' first sample; carried
+                # otherwise (and still zero for a per-period flow).
+                value = carried if carry_forward and carried is not None else Decimal(0)
+            else:
+                carried = value
+            totals[timestamp] += value
+
+    return Series(
+        group=group_name,
+        points=[TimeSeriesPoint(timestamp=t, value=totals[t]) for t in timestamps],
+    )
