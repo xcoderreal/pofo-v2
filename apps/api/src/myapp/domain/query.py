@@ -13,6 +13,24 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
+from typing import Literal
+
+# A resolved scope along one dimension: an explicit id list, the literal
+# "all", or None meaning "not provided at all". "all" and "omitted" are
+# kept distinct because market_price's validation needs to tell them
+# apart — an explicit accounts=["all"] is still a caller asserting an
+# account dimension exists.
+#
+# Lives here rather than in either service because both the time-series
+# query and the batched positions query resolve scope the same way, and
+# two verbatim copies of a rule is one copy too many.
+Scope = list[str] | Literal["all"] | None
+
+
+def is_unconstrained(scope: Scope) -> bool:
+    """Omitted, or an explicit-but-non-narrowing "all" — the only values
+    that don't request a real filter along this dimension."""
+    return scope is None or scope == "all" or scope == ["all"]
 
 
 class Metric(StrEnum):

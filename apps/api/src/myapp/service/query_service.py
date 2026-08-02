@@ -13,7 +13,6 @@ sampled boundary date in the requested range, via compute_position's
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Literal
 
 from myapp.domain.model import AssetClass
 from myapp.domain.position import compute_lots, compute_position, realized_gain_events
@@ -23,8 +22,10 @@ from myapp.domain.query import (
     Metric,
     MetricKind,
     Mode,
+    Scope,
     Series,
     TimeSeriesPoint,
+    is_unconstrained,
     is_valid_metric_mode,
     metric_kind,
     period_boundaries,
@@ -36,11 +37,6 @@ from myapp.domain.repository import (
 )
 from myapp.service.cash_service import CASH_INSTRUMENT_ID
 from myapp.service.price_service import PriceService
-
-# A resolved scope: an explicit id list, the literal "all", or (accounts
-# only) None meaning "not provided at all" — the signal the market_price
-# validation needs, since "all" and "omitted" mean different things there.
-Scope = list[str] | Literal["all"] | None
 
 # How far before the requested start to look for a price bar. A range's
 # own start date very often has no bar of its own — it's a weekend or a
@@ -71,12 +67,6 @@ class InstrumentsNotApplicableError(Exception):
     """`instruments` was given but this metric always targets a single,
     fixed instrument (cash_balance -> CASH) — there's no instrument
     dimension for it to filter."""
-
-
-def _is_unconstrained(scope: Scope) -> bool:
-    """Omitted, or an explicit-but-non-narrowing "all" — the only values
-    that don't request a real filter along this dimension."""
-    return scope is None or scope == "all" or scope == ["all"]
 
 
 # equity/cost_basis/unrealized_gain summed across "all" instruments would
@@ -115,12 +105,12 @@ class QueryService:
                 f"mode {mode!r} is not valid for metric {metric!r}"
             )
         if metric == Metric.MARKET_PRICE and (
-            not _is_unconstrained(accounts) or group_by == GroupBy.ACCOUNT
+            not is_unconstrained(accounts) or group_by == GroupBy.ACCOUNT
         ):
             raise AccountsNotApplicableError(
                 "accounts has no meaning for market_price — it has no account dimension"
             )
-        if metric == Metric.CASH_BALANCE and not _is_unconstrained(instruments):
+        if metric == Metric.CASH_BALANCE and not is_unconstrained(instruments):
             raise InstrumentsNotApplicableError(
                 "instruments has no meaning for cash_balance — "
                 "it always targets the CASH instrument"
@@ -145,7 +135,7 @@ class QueryService:
 
     def _resolve_instruments(self, instruments: Scope, metric: Metric) -> list[str]:
         catalog = self.instrument_repo.list_all()
-        if _is_unconstrained(instruments):
+        if is_unconstrained(instruments):
             if metric in _EXCLUDES_CASH_FROM_ALL:
                 return sorted(i.id for i in catalog if i.asset_class != AssetClass.CASH)
             return sorted(i.id for i in catalog)
@@ -154,7 +144,7 @@ class QueryService:
 
     def _resolve_accounts(self, user_id: str, accounts: Scope) -> list[str]:
         owned_ids = {a.id for a in self.account_repo.list_by_user(user_id)}
-        if _is_unconstrained(accounts):
+        if is_unconstrained(accounts):
             return sorted(owned_ids)
         return sorted(owned_ids & set(accounts))
 

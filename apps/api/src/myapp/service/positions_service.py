@@ -38,18 +38,13 @@ caching computed Position/Lot/gains is an explicit non-goal
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Literal
 
+from myapp.domain.query import Scope, is_unconstrained
 from myapp.service.account_service import AccountService
 from myapp.service.gains_service import GainsService
 from myapp.service.instrument_service import InstrumentService
 from myapp.service.price_service import PriceService
 from myapp.service.transaction_service import TransactionService
-
-# Same convention as the time-series query's scope params: omitted, or an
-# explicit-but-non-narrowing "all", both mean "no filter on this
-# dimension" (service/query_service.py).
-Scope = list[str] | Literal["all"] | None
 
 
 @dataclass(frozen=True)
@@ -72,10 +67,6 @@ class PositionRow:
     market_value: Decimal | None
     realized_gain: Decimal
     unrealized_gain: Decimal | None
-
-
-def _is_unconstrained(scope: Scope) -> bool:
-    return scope is None or scope == "all" or scope == ["all"]
 
 
 @dataclass
@@ -120,13 +111,13 @@ class PositionsService:
 
     def _resolve_accounts(self, user_id: str, accounts: Scope) -> list[str]:
         owned_ids = {a.id for a in self.account_service.list_accounts(user_id)}
-        if _is_unconstrained(accounts):
+        if is_unconstrained(accounts):
             return sorted(owned_ids)
         return sorted(owned_ids & set(accounts))
 
     def _resolve_instruments(self, instruments: Scope) -> list[str]:
         catalog_ids = {i.id for i in self.instrument_service.list_instruments()}
-        if _is_unconstrained(instruments):
+        if is_unconstrained(instruments):
             return sorted(catalog_ids)
         return sorted(catalog_ids & set(instruments))
 
