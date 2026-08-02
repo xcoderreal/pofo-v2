@@ -11,6 +11,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <Stack>
           <Stack.Screen name="index" options={{ title: "Instruments" }} />
+          <Stack.Screen name="accounts" options={{ title: "Accounts" }} />
         </Stack>
       </QueryClientProvider>
     </ThemeContext.Provider>

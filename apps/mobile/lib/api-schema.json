@@ -125,6 +125,103 @@
         }
       }
     },
+    "/accounts": {
+      "get": {
+        "summary": "List Accounts",
+        "operationId": "list_accounts_accounts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Accounts Accounts Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Account",
+        "operationId": "create_account_accounts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{account_id}": {
+      "get": {
+        "summary": "Get Account",
+        "operationId": "get_account_accounts__account_id__get",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -144,6 +241,43 @@
   },
   "components": {
     "schemas": {
+      "AccountResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "institution": {
+            "type": "string",
+            "title": "Institution"
+          },
+          "account_type": {
+            "$ref": "#/components/schemas/AccountType"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "institution",
+          "account_type"
+        ],
+        "title": "AccountResponse"
+      },
+      "AccountType": {
+        "type": "string",
+        "enum": [
+          "brokerage",
+          "ira",
+          "crypto_exchange",
+          "cash"
+        ],
+        "title": "AccountType"
+      },
       "AssetClass": {
         "type": "string",
         "enum": [
@@ -153,6 +287,33 @@
           "cash"
         ],
         "title": "AssetClass"
+      },
+      "CreateAccountRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "institution": {
+            "type": "string",
+            "title": "Institution"
+          },
+          "account_type": {
+            "$ref": "#/components/schemas/AccountType"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "institution",
+          "account_type"
+        ],
+        "title": "CreateAccountRequest"
       },
       "CreateInstrumentRequest": {
         "properties": {

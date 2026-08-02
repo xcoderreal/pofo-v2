@@ -7,6 +7,8 @@ const BASE_URL = resolveApiBaseUrl();
 export type Instrument = components["schemas"]["InstrumentResponse"];
 export type CreateInstrumentRequest =
   components["schemas"]["CreateInstrumentRequest"];
+export type Account = components["schemas"]["AccountResponse"];
+export type CreateAccountRequest = components["schemas"]["CreateAccountRequest"];
 
 function resolveBase(): string {
   return BASE_URL.startsWith("/")
@@ -24,14 +26,6 @@ export async function fetchInstruments(): Promise<Instrument[]> {
   return res.json();
 }
 
-export async function fetchInstrument(id: string): Promise<Instrument> {
-  const res = await fetch(`${resolveBase()}/instruments/${id}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch instrument ${id} (${res.status})`);
-  }
-  return res.json();
-}
-
 export async function createInstrument(
   data: CreateInstrumentRequest,
 ): Promise<Instrument> {
@@ -43,6 +37,31 @@ export async function createInstrument(
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Failed to create instrument (${res.status})`);
+  }
+  return res.json();
+}
+
+// ─── Accounts ───────────────────────────────────────────────
+
+export async function fetchAccounts(): Promise<Account[]> {
+  const res = await fetch(`${resolveBase()}/accounts`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch accounts (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function createAccount(
+  data: CreateAccountRequest,
+): Promise<Account> {
+  const res = await fetch(`${resolveBase()}/accounts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Failed to create account (${res.status})`);
   }
   return res.json();
 }

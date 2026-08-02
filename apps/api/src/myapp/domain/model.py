@@ -23,3 +23,19 @@ class Instrument:
 
     def __post_init__(self) -> None:
         self.symbol = self.symbol.upper()
+
+
+class AccountType(StrEnum):
+    BROKERAGE = "brokerage"
+    IRA = "ira"
+    CRYPTO_EXCHANGE = "crypto_exchange"
+    CASH = "cash"
+
+
+@dataclass
+class Account:
+    id: str
+    user_id: str
+    name: str
+    institution: str
+    account_type: AccountType

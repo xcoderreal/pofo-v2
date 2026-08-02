@@ -4,18 +4,22 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from myapp.adapters.memory_repository import MemoryInstrumentRepository
+from myapp.adapters.memory_repository import (
+    MemoryAccountRepository,
+    MemoryInstrumentRepository,
+)
 from myapp.adapters.stub_auth_provider import StubAuthProvider
 from myapp.adapters.supabase_auth_provider import SupabaseAuthProvider
 from myapp.config import Settings
 from myapp.domain.auth import AuthenticationError, AuthProvider
-from myapp.domain.model import AssetClass, Instrument, User
-from myapp.domain.repository import InstrumentRepository
+from myapp.domain.model import Account, AccountType, AssetClass, Instrument, User
+from myapp.domain.repository import AccountRepository, InstrumentRepository
+from myapp.service.account_service import AccountService
+from myapp.service.account_service import DuplicateIdError as AccountDuplicateIdError
 from myapp.service.instrument_service import (
-    DuplicateIdError,
-    DuplicateSymbolError,
-    InstrumentService,
+    DuplicateIdError as InstrumentDuplicateIdError,
 )
+from myapp.service.instrument_service import DuplicateSymbolError, InstrumentService
 
 
 def _build_auth_provider(settings: Settings) -> AuthProvider:
@@ -37,6 +41,7 @@ async def lifespan(app: FastAPI):
     # than whenever this module happens to be imported (e.g. test collection).
     settings = Settings()
     app.state.instrument_repo = MemoryInstrumentRepository()
+    app.state.account_repo = MemoryAccountRepository()
     app.state.auth_provider = _build_auth_provider(settings)
     yield
 
@@ -129,7 +134,7 @@ def create_instrument(
     )
     try:
         service.create_instrument(instrument)
-    except (DuplicateIdError, DuplicateSymbolError) as exc:
+    except (InstrumentDuplicateIdError, DuplicateSymbolError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _to_instrument_response(instrument)
 
@@ -156,6 +161,93 @@ def get_current_user(
 @app.get("/me")
 def get_me(current_user: User = Depends(get_current_user)) -> dict[str, str]:
     return {"user_id": current_user.id}
+
+
+# ─── Account dependencies ──────────────────────────────────────
+
+
+def get_account_repo(request: Request) -> AccountRepository:
+    return request.app.state.account_repo
+
+
+def get_account_service(
+    repo: AccountRepository = Depends(get_account_repo),
+) -> AccountService:
+    return AccountService(repo=repo)
+
+
+# ─── Account schemas ────────────────────────────────────────────
+
+
+class AccountResponse(BaseModel):
+    id: str
+    name: str
+    institution: str
+    account_type: AccountType
+
+
+class CreateAccountRequest(BaseModel):
+    id: str
+    name: str
+    institution: str
+    account_type: AccountType
+
+
+def _to_account_response(account: Account) -> AccountResponse:
+    return AccountResponse(
+        id=account.id,
+        name=account.name,
+        institution=account.institution,
+        account_type=account.account_type,
+    )
+
+
+# ─── Account routes ─────────────────────────────────────────────
+# Accounts are user-owned — every route requires auth and every read/write
+# is scoped to current_user.id. Cross-user reads return 404, not 403
+# (docs/auth.md's 401/404 policy) — the service layer enforces this the
+# same way a real Supabase RLS policy would at the query layer.
+
+
+@app.get("/accounts", response_model=list[AccountResponse])
+def list_accounts(
+    current_user: User = Depends(get_current_user),
+    service: AccountService = Depends(get_account_service),
+):
+    accounts = service.list_accounts(user_id=current_user.id)
+    return [_to_account_response(a) for a in accounts]
+
+
+@app.get("/accounts/{account_id}", response_model=AccountResponse)
+def get_account(
+    account_id: str,
+    current_user: User = Depends(get_current_user),
+    service: AccountService = Depends(get_account_service),
+):
+    account = service.get_account(account_id, user_id=current_user.id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return _to_account_response(account)
+
+
+@app.post("/accounts", response_model=AccountResponse, status_code=201)
+def create_account(
+    request: CreateAccountRequest,
+    current_user: User = Depends(get_current_user),
+    service: AccountService = Depends(get_account_service),
+):
+    account = Account(
+        id=request.id,
+        user_id=current_user.id,
+        name=request.name,
+        institution=request.institution,
+        account_type=request.account_type,
+    )
+    try:
+        service.create_account(account)
+    except AccountDuplicateIdError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _to_account_response(account)
 
 
 # ─── Health ───────────────────────────────────────────────────

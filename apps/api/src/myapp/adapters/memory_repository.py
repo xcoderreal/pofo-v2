@@ -1,5 +1,5 @@
-from myapp.domain.model import Instrument
-from myapp.domain.repository import InstrumentRepository
+from myapp.domain.model import Account, Instrument
+from myapp.domain.repository import AccountRepository, InstrumentRepository
 
 
 class MemoryInstrumentRepository(InstrumentRepository):
@@ -28,3 +28,28 @@ class MemoryInstrumentRepository(InstrumentRepository):
 
     def add(self, instrument: Instrument) -> None:
         self._instruments.append(instrument)
+
+
+class MemoryAccountRepository(AccountRepository):
+    """In-memory repository.
+
+    get() is intentionally unscoped by user — ownership is enforced by the
+    service layer (see AccountService), mirroring how a real Supabase-backed
+    adapter's RLS policy would make cross-user rows invisible at the query
+    layer rather than requiring the adapter to filter explicitly.
+    """
+
+    def __init__(self, accounts: list[Account] | None = None):
+        self._accounts: list[Account] = list(accounts or [])
+
+    def list_by_user(self, user_id: str) -> list[Account]:
+        return [a for a in self._accounts if a.user_id == user_id]
+
+    def get(self, account_id: str) -> Account | None:
+        for account in self._accounts:
+            if account.id == account_id:
+                return account
+        return None
+
+    def add(self, account: Account) -> None:
+        self._accounts.append(account)

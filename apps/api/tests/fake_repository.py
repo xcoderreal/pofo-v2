@@ -1,5 +1,5 @@
-from myapp.domain.model import Instrument
-from myapp.domain.repository import InstrumentRepository
+from myapp.domain.model import Account, Instrument
+from myapp.domain.repository import AccountRepository, InstrumentRepository
 
 
 class FakeInstrumentRepository(InstrumentRepository):
@@ -23,3 +23,20 @@ class FakeInstrumentRepository(InstrumentRepository):
 
     def add(self, instrument: Instrument) -> None:
         self._instruments.append(instrument)
+
+
+class FakeAccountRepository(AccountRepository):
+    def __init__(self, accounts: list[Account] | None = None):
+        self._accounts: list[Account] = list(accounts or [])
+
+    def list_by_user(self, user_id: str) -> list[Account]:
+        return [a for a in self._accounts if a.user_id == user_id]
+
+    def get(self, account_id: str) -> Account | None:
+        for account in self._accounts:
+            if account.id == account_id:
+                return account
+        return None
+
+    def add(self, account: Account) -> None:
+        self._accounts.append(account)

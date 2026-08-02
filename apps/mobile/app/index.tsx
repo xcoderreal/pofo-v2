@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   FlatList,
@@ -13,6 +14,7 @@ import { instrumentIdFromSymbol } from "@/lib/instruments";
 const ASSET_CLASSES = ["equity", "etf", "crypto", "cash"] as const;
 
 export default function HomeScreen() {
+  const router = useRouter();
   const instruments = useInstruments();
   const createInstrument = useCreateInstrument();
 
@@ -43,6 +45,14 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      <Pressable
+        testID="nav-accounts"
+        onPress={() => router.push("/accounts")}
+        style={styles.navButton}
+      >
+        <Text style={styles.buttonText}>Accounts</Text>
+      </Pressable>
+
       <View testID="create-instrument-form" style={styles.form}>
         <TextInput
           testID="input-symbol"
@@ -150,6 +160,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 6,
     alignSelf: "flex-start",
+  },
+  navButton: {
+    backgroundColor: "#4a90d9",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignSelf: "flex-end",
+    margin: 12,
   },
   buttonText: { color: "#fff", fontWeight: "600" },
   error: { color: "#c0392b" },
