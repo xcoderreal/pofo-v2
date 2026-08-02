@@ -145,6 +145,24 @@ kill:
 enable-mcp-playwright:
     python3 scripts/enable-playwright-mcp.py
 
+# ─── Supabase (local dev) ──────────────────────────────────────
+# Assumes `cd apps/api && supabase start` is already running — re-running
+# `supabase start` against an already-started stack is not itself
+# idempotent (fails on a port conflict), so this deliberately doesn't
+# chain it. See docs/environments.md.
+
+# `just supabase-reset-dev` = the single command #4's acceptance criteria
+# ask for: wipe the local DB, reapply migrations, and re-provision the
+# fixed dev-user login — idempotent, safe to run repeatedly.
+supabase-reset-dev:
+    cd apps/api && supabase db reset
+    cd apps/api && uv run python scripts/seed_dev_user.py
+
+# Re-provisions just the dev-user login, without a full db reset — e.g.
+# if it was deleted by hand through Studio. Idempotent.
+seed-dev-user:
+    cd apps/api && uv run python scripts/seed_dev_user.py
+
 # ─── Scaffolding: fork this skeleton into a new project ──────
 # `just new-project <slug>` = rename placeholder + install + lint-fix + verify.
 # Single command for forking. The python script is the primitive (plain text

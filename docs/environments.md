@@ -37,7 +37,11 @@ class SupabaseAuthProvider(AuthProvider):
 
 Seeding takes exactly one resolved input: `user_id`. It asks the active `AuthProvider` for the identity to attach seeded data to — the Stub Auth constant, or the real seeded Dev User's Supabase UUID — so the same seed script works unmodified in every cell.
 
-**The dev-user re-provisioning problem, solved:** `supabase-reset dev` (or equivalent) wipes `auth.users` along with everything else, including any manually-created login. A `just seed-dev-user` step (or folded into the reset recipe) calls the Supabase Admin API to recreate the same fixed dev account — known email, known password, stable UUID — immediately after every reset. One command, zero manual dashboard clicking, ever. This is what makes `supabase + supabase` locally viable for day-to-day auth-path testing without the friction that motivated keeping `stub` around at all.
+**The dev-user re-provisioning problem, solved:** `just supabase-reset-dev` wipes `auth.users` along with everything else via `supabase db reset`, then calls `apps/api/scripts/seed_dev_user.py`, which re-provisions the same fixed dev account through the Supabase Admin API — known email (`dev@example.com`), known password, and (by passing the id explicitly on create) the *same* UUID every time, not just the same credentials. One command, zero manual dashboard clicking, ever. `just seed-dev-user` runs just the reseed step alone (e.g. after deleting the login by hand through Studio, with no full reset needed).
+
+Idempotent by construction: a duplicate create attempt fails with the Admin API's 422 `email_exists`, which the script treats as an already-provisioned signal and looks up the existing row instead of erroring — the same get-then-create-if-missing shape `CashService._ensure_cash_instrument` already uses. The script discovers the local stack's URL and secret key from `supabase status -o json` itself — no env vars to set up, and it only ever talks to whatever project the current directory's `supabase/config.toml` points at, so it can't accidentally hit a hosted project. Assumes `cd apps/api && supabase start` is already running; requires Docker.
+
+This is what makes `supabase + supabase` locally viable for day-to-day auth-path testing without the friction that motivated keeping `stub` around at all.
 
 Seed data (accounts, instruments, transactions) never triggers a live price fetch — trade price lives on the `Transaction` itself (see `docs/domain-model.md`). Reseeding is instant and offline regardless of which cell is active.
 
