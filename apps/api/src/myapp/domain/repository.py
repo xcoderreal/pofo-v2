@@ -29,6 +29,17 @@ class AccountRepository(ABC):
     @abstractmethod
     def add(self, account: Account) -> None: ...
 
+    @abstractmethod
+    def delete(self, account_id: str) -> None:
+        """Remove one Account row. A no-op if the id isn't there.
+
+        Unscoped by user, like `get` — ownership is the service layer's
+        check, mirroring how a real RLS policy makes another user's row
+        invisible at the query layer rather than requiring the adapter to
+        filter. Deleting the Transactions that hang off the account is
+        *not* this method's job: see `AccountService.delete_account`.
+        """
+
 
 class TransactionRepository(ABC):
     @abstractmethod
@@ -41,6 +52,18 @@ class TransactionRepository(ABC):
 
     @abstractmethod
     def add(self, transaction: Transaction) -> None: ...
+
+    @abstractmethod
+    def delete_by_account(self, account_id: str) -> None:
+        """Remove every Transaction on one Account, whatever its instrument.
+
+        By account, never by instrument: FIFO lot matching is scoped per
+        Account (docs/domain-model.md § "Why FIFO scoped per Account"), so
+        this is the one deletion shape that cannot reach into another
+        account's ledger. It takes the paired CASH legs of the account's
+        trades with it for free — they are ordinary rows on the same
+        account (docs/adr/0001-dashboard-v2.md § 1).
+        """
 
 
 class PriceHistoryRepository(ABC):

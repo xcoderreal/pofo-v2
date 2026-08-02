@@ -85,7 +85,15 @@ export interface paths {
         get: operations["get_account_accounts__account_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Account
+         * @description Delete an Account and everything recorded in it.
+         *
+         *     Scoped to the caller by passing `current_user.id` into the service,
+         *     which resolves the account through the same ownership check every read
+         *     here makes — so another user's account is a 404, not a delete.
+         */
+        delete: operations["delete_account_accounts__account_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -305,6 +313,16 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
+        };
+        /**
+         * DeleteAccountResponse
+         * @description What the cascade destroyed, so the client can say so rather than
+         *     just going quiet. Counts *every* row removed, including the paired
+         *     CASH legs the Activity feed hides.
+         */
+        DeleteAccountResponse: {
+            /** Transactions Deleted */
+            transactions_deleted: number;
         };
         /** DemoSeedResponse */
         DemoSeedResponse: {
@@ -727,6 +745,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_account_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteAccountResponse"];
                 };
             };
             /** @description Validation Error */

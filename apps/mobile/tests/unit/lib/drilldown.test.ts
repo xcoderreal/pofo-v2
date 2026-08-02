@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  accountDeleted,
   buildChips,
   clearAccount,
   clearInstrument,
@@ -221,6 +222,44 @@ describe("clearing a chip", () => {
 
     expect(clearInstrument(before)).toEqual({ ...before, instrumentId: null });
     expect(clearAccount(before)).toEqual({ ...before, accountId: null });
+  });
+});
+
+describe("accountDeleted — the scope after a cascade delete", () => {
+  test("a view scoped to the deleted account falls back to the whole portfolio", () => {
+    // #24 AC 7. The alternative is a dangling filter: a chip naming an
+    // account that no longer exists, over lists that are now empty.
+    const next = accountDeleted(state({ accountId: "ira" }), "ira");
+
+    expect(next.accountId).toBeNull();
+    expect(resolveLevel(next)).toBe("portfolio");
+  });
+
+  test("a slice falls back to the instrument, keeping the instrument chip", () => {
+    // An instrument is not owned by an account — you still hold GOOG
+    // elsewhere, and this is exactly the slice -> instrument step.
+    const next = accountDeleted(
+      state({ instrumentId: "goog", accountId: "ira" }),
+      "ira",
+    );
+
+    expect(next).toEqual(state({ instrumentId: "goog", accountId: null }));
+    expect(resolveLevel(next)).toBe("instrument");
+  });
+
+  test("deleting some other account leaves the state identical", () => {
+    // Identity, not just equality: the caller applies this
+    // unconditionally, so a fresh object every time would churn every
+    // memo downstream of the view state.
+    const before = state({ accountId: "ira", metric: "cash_balance" });
+
+    expect(accountDeleted(before, "brokerage")).toBe(before);
+  });
+
+  test("an unscoped view is untouched", () => {
+    const before = state();
+
+    expect(accountDeleted(before, "ira")).toBe(before);
   });
 });
 

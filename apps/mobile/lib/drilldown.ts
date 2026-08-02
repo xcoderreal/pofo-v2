@@ -209,6 +209,34 @@ export function clearAccount(state: ViewState): ViewState {
 }
 
 /**
+ * The scope after an account was deleted (#24 AC 7).
+ *
+ * Not `clearAccount` with an `if` at the call site, and not an Undo toast
+ * either. Both would be wrong in the same way: this is not a filter the
+ * user dismissed and might want back — the thing the chip named no longer
+ * exists, so offering to restore the scope would be offering a filter on a
+ * deleted account. The view falls back to the whole portfolio silently and
+ * the deletion itself is what was confirmed.
+ *
+ * Returns the state **unchanged** when the deleted account wasn't the one
+ * in scope, so a caller can apply it unconditionally — the same shape
+ * `clampSelection` (`lib/chartInteraction.ts`) uses for the analogous "the
+ * data moved under the selection" case, and the reason both are pure: the
+ * transition is easy to get subtly wrong and impossible to see.
+ *
+ * The instrument chip is deliberately left alone. An instrument is not
+ * owned by an account: at slice level this is exactly the slice → instrument
+ * step, and the user still holds that instrument elsewhere.
+ */
+export function accountDeleted(
+  state: ViewState,
+  deletedAccountId: string,
+): ViewState {
+  if (state.accountId !== deletedAccountId) return state;
+  return clearAccount(state);
+}
+
+/**
  * A tap on the Grid — a matrix cell, a row header, a column header or an
  * allocation segment — as a scope.
  *

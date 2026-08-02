@@ -79,7 +79,9 @@ class Harness:
             instrument_service=instrument_service,
         )
         self.service = LedgerService(
-            account_service=AccountService(repo=account_repo),
+            account_service=AccountService(
+                repo=account_repo, transaction_repo=transaction_repo
+            ),
             instrument_service=instrument_service,
             transaction_service=transaction_service,
             gains_service=GainsService(

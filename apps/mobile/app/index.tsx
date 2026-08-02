@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { AccountBreakdownList } from "@/components/AccountBreakdownList";
+import { NewAccountSheet } from "@/components/AccountSheet";
 import { DateRangeSheet } from "@/components/DateRangeSheet";
 import { EntryFab } from "@/components/EntryFab";
 import { InstrumentStatCard } from "@/components/InstrumentStatCard";
@@ -22,7 +23,7 @@ import { UndoToast } from "@/components/UndoToast";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useTheme } from "@/hooks/useTheme";
 import { useSharedViewState } from "@/hooks/useViewState";
-import { WHOLE_PORTFOLIO_KEY } from "@/lib/accounts";
+import { NEW_ACCOUNT_KEY, WHOLE_PORTFOLIO_KEY } from "@/lib/accounts";
 import {
   clearAccount,
   clearInstrument,
@@ -52,7 +53,13 @@ const PILL_RANGES = RANGE_KEYS;
 
 /** Which bottom sheet is open, if any. One slot: they are all modal, so
  * two at once is not a state worth representing. */
-type SheetKind = "metric" | "granularity" | "accounts" | "custom" | "entry";
+type SheetKind =
+  | "metric"
+  | "granularity"
+  | "accounts"
+  | "custom"
+  | "entry"
+  | "new-account";
 
 /**
  * The Flow toggle's two segments, as `[cumulative, label]`.
@@ -500,7 +507,9 @@ export default function PortfolioScreen() {
           onSelect={(key) =>
             key === WHOLE_PORTFOLIO_KEY
               ? onSelectWholePortfolio()
-              : onSelectAccount(key)
+              : key === NEW_ACCOUNT_KEY
+                ? setSheet("new-account")
+                : onSelectAccount(key)
           }
           onClose={() => setSheet(null)}
         />
@@ -512,6 +521,21 @@ export default function PortfolioScreen() {
         />
       ) : sheet === "entry" ? (
         <TransactionSheet onClose={() => setSheet(null)} />
+      ) : sheet === "new-account" ? (
+        // Scoped to the account it just made: creating one from the
+        // Accounts sheet is answering "which account?", so leaving the
+        // view where it was would discard the answer. `holdsInstruments`
+        // is false by construction — it has no transactions yet — which is
+        // what switches the metric to `cash_balance` and puts the empty
+        // state on screen (behaviour.md § Auto-adjustments).
+        <NewAccountSheet
+          onClose={() => setSheet(null)}
+          onCreated={(accountId) =>
+            view.update(
+              selectAccount(state, accountId, { holdsInstruments: false }),
+            )
+          }
+        />
       ) : null}
     </View>
   );

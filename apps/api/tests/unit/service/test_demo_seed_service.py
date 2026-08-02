@@ -30,7 +30,9 @@ class Harness:
             account_repo=self.account_repo,
             instrument_repo=self.instrument_repo,
         )
-        self.account_service = AccountService(repo=self.account_repo)
+        self.account_service = AccountService(
+            repo=self.account_repo, transaction_repo=self.transaction_repo
+        )
         self.instrument_service = InstrumentService(repo=self.instrument_repo)
         self.service = DemoSeedService(
             account_service=self.account_service,

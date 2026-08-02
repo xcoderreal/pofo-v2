@@ -31,6 +31,7 @@ create policy "accounts_select_own" on public.accounts
 create policy "accounts_insert_own" on public.accounts
     for insert with check (auth.uid() = user_id);
 
--- No update/delete policy yet — no update/delete endpoint or service
--- method exists for Accounts. Add alongside whichever ticket builds one,
--- rather than speculatively ahead of it.
+-- No update/delete policy here — none existed when this table was
+-- written. The delete policy landed with the endpoint that needed it, in
+-- 0002_accounts_delete_policy.sql (#24). There is still no update policy,
+-- because nothing edits an Account.

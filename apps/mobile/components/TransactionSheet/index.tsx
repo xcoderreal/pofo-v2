@@ -30,9 +30,13 @@ type Picker = "account" | "instrument" | null;
  * the server's rejection means) is `useTransactionEntry` calling pure
  * functions in `lib/transactionEntry.ts`. What is here is the JSX.
  *
- * Neither picker offers "add new". Instrument creation is #23 and account
- * creation is #24 — the seam is the picker's own list, built from the
- * catalogs, which those tickets will simply grow a row on.
+ * Neither picker offers "add new", and the account one deliberately still
+ * doesn't now that #24 has landed: creation lives on the Accounts sheet
+ * and the Grid's Accounts list, which is where "which accounts do I have"
+ * is being asked. Recording a transaction is a different question, and a
+ * half-filled trade draft is a bad place to be interrupted by a form.
+ * Instrument creation is #23; the seam is the picker's own list, built
+ * from the catalog.
  */
 export function TransactionSheet({ onClose }: Props) {
   const theme = useTheme();

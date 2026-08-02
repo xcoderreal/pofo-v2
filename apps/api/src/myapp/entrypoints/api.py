@@ -213,10 +213,18 @@ def get_account_repo(request: Request) -> AccountRepository:
     return request.app.state.account_repo
 
 
+# Declared here rather than down in the Transaction section because
+# `Depends(...)` defaults are evaluated at def time and AccountService
+# needs it: deleting an Account cascades into its Transactions.
+def get_transaction_repo(request: Request) -> TransactionRepository:
+    return request.app.state.transaction_repo
+
+
 def get_account_service(
     repo: AccountRepository = Depends(get_account_repo),
+    transaction_repo: TransactionRepository = Depends(get_transaction_repo),
 ) -> AccountService:
-    return AccountService(repo=repo)
+    return AccountService(repo=repo, transaction_repo=transaction_repo)
 
 
 # ─── Account schemas ────────────────────────────────────────────
@@ -234,6 +242,14 @@ class CreateAccountRequest(BaseModel):
     name: str
     institution: str
     account_type: AccountType
+
+
+class DeleteAccountResponse(BaseModel):
+    """What the cascade destroyed, so the client can say so rather than
+    just going quiet. Counts *every* row removed, including the paired
+    CASH legs the Activity feed hides."""
+
+    transactions_deleted: int
 
 
 def _to_account_response(account: Account) -> AccountResponse:
@@ -293,11 +309,27 @@ def create_account(
     return _to_account_response(account)
 
 
+@app.delete("/accounts/{account_id}", response_model=DeleteAccountResponse)
+def delete_account(
+    account_id: str,
+    current_user: User = Depends(get_current_user),
+    service: AccountService = Depends(get_account_service),
+):
+    """Delete an Account and everything recorded in it.
+
+    Scoped to the caller by passing `current_user.id` into the service,
+    which resolves the account through the same ownership check every read
+    here makes — so another user's account is a 404, not a delete.
+    """
+    deleted = service.delete_account(account_id, user_id=current_user.id)
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return DeleteAccountResponse(transactions_deleted=deleted)
+
+
 # ─── Transaction dependencies ──────────────────────────────────
-
-
-def get_transaction_repo(request: Request) -> TransactionRepository:
-    return request.app.state.transaction_repo
+# `get_transaction_repo` lives up in the Account section — see the note
+# there.
 
 
 def get_transaction_service(

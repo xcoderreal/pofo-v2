@@ -185,8 +185,11 @@ export function useTransactionEntry(options: {
   const validation = validateEntry(draft, { unitsHeld: held });
 
   // ─── Pickers ────────────────────────────────────────────────
-  // Chosen from, never created here: instrument creation is #23 and
-  // account creation is #24, so this list is exactly what already exists.
+  // Chosen from, never created here — see the sheet's own note on why
+  // account creation stayed on the Accounts sheet and the Grid (#24) and
+  // instrument creation is #23. This list is exactly what already exists,
+  // and `useCreateAccount` invalidating `["accounts"]` is what makes a
+  // just-created account appear in it without a reload.
 
   const accountOptions = useMemo<EntryPickerOption[]>(
     () =>

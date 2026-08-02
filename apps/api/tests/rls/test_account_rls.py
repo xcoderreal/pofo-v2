@@ -83,3 +83,63 @@ def test_user_cannot_insert_an_account_owned_by_another_user(
     # PostgREST's normal WITH CHECK violation response, not an auth
     # rejection — a 401 here would mean a different, wrong failure mode.
     assert resp.status_code == 403, resp.text
+
+
+def test_user_cannot_delete_another_users_account(
+    rls_test_env: RlsTestEnv, fixture_users: tuple[FixtureUser, FixtureUser]
+) -> None:
+    """The accounts_delete_own policy (0002_accounts_delete_policy.sql).
+
+    A DELETE filtered by a row RLS hides matches nothing, so PostgREST
+    answers 204 having deleted zero rows — "invisible, not an error", the
+    same semantics as the read above and as AccountService.delete_account's
+    None-means-404. The assertion that matters is therefore not the status
+    code but that the row is still there afterwards.
+    """
+    user_a, user_b = fixture_users
+    account_id = f"rls-{uuid.uuid4().hex[:8]}"
+
+    created = _create_account(rls_test_env, user_a, account_id=account_id, owner=user_a)
+    assert created.status_code in (200, 201), created.text
+
+    httpx.delete(
+        f"{rls_test_env.url}/rest/v1/accounts",
+        headers=account_headers(rls_test_env, user_b),
+        params={"id": f"eq.{account_id}"},
+        timeout=10,
+    )
+
+    still_there = httpx.get(
+        f"{rls_test_env.url}/rest/v1/accounts",
+        headers=account_headers(rls_test_env, user_a),
+        params={"id": f"eq.{account_id}"},
+        timeout=10,
+    )
+    assert still_there.status_code == 200
+    assert len(still_there.json()) == 1
+
+
+def test_user_can_delete_their_own_account(
+    rls_test_env: RlsTestEnv, fixture_users: tuple[FixtureUser, FixtureUser]
+) -> None:
+    user_a, _ = fixture_users
+    account_id = f"rls-{uuid.uuid4().hex[:8]}"
+
+    created = _create_account(rls_test_env, user_a, account_id=account_id, owner=user_a)
+    assert created.status_code in (200, 201), created.text
+
+    deleted = httpx.delete(
+        f"{rls_test_env.url}/rest/v1/accounts",
+        headers=account_headers(rls_test_env, user_a),
+        params={"id": f"eq.{account_id}"},
+        timeout=10,
+    )
+    assert deleted.status_code in (200, 204), deleted.text
+
+    read = httpx.get(
+        f"{rls_test_env.url}/rest/v1/accounts",
+        headers=account_headers(rls_test_env, user_a),
+        params={"id": f"eq.{account_id}"},
+        timeout=10,
+    )
+    assert read.json() == []

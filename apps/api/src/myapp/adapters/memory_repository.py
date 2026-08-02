@@ -62,6 +62,9 @@ class MemoryAccountRepository(AccountRepository):
     def add(self, account: Account) -> None:
         self._accounts.append(account)
 
+    def delete(self, account_id: str) -> None:
+        self._accounts = [a for a in self._accounts if a.id != account_id]
+
 
 class MemoryTransactionRepository(TransactionRepository):
     def __init__(self, transactions: list[Transaction] | None = None):
@@ -81,6 +84,11 @@ class MemoryTransactionRepository(TransactionRepository):
 
     def add(self, transaction: Transaction) -> None:
         self._transactions.append(transaction)
+
+    def delete_by_account(self, account_id: str) -> None:
+        self._transactions = [
+            t for t in self._transactions if t.account_id != account_id
+        ]
 
 
 class MemoryPriceHistoryRepository(PriceHistoryRepository):

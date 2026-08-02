@@ -88,7 +88,9 @@ class Harness:
             instrument_service=self.instrument_service,
         )
         self.service = PositionsService(
-            account_service=AccountService(repo=account_repo),
+            account_service=AccountService(
+                repo=account_repo, transaction_repo=transaction_repo
+            ),
             instrument_service=self.instrument_service,
             transaction_service=self.transaction_service,
             gains_service=GainsService(

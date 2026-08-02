@@ -220,6 +220,44 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Delete Account",
+        "description": "Delete an Account and everything recorded in it.\n\nScoped to the caller by passing `current_user.id` into the service,\nwhich resolves the account through the same ownership check every read\nhere makes \u2014 so another user's account is a 404, not a delete.",
+        "operationId": "delete_account_accounts__account_id__delete",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteAccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/transactions": {
@@ -880,6 +918,20 @@
           "timestamp"
         ],
         "title": "CreateTransactionRequest"
+      },
+      "DeleteAccountResponse": {
+        "properties": {
+          "transactions_deleted": {
+            "type": "integer",
+            "title": "Transactions Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transactions_deleted"
+        ],
+        "title": "DeleteAccountResponse",
+        "description": "What the cascade destroyed, so the client can say so rather than\njust going quiet. Counts *every* row removed, including the paired\nCASH legs the Activity feed hides."
       },
       "DemoSeedResponse": {
         "properties": {

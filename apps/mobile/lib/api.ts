@@ -73,6 +73,31 @@ export async function createAccount(
   return res.json();
 }
 
+export type DeleteAccountResult =
+  components["schemas"]["DeleteAccountResponse"];
+
+/**
+ * Delete an Account and every Transaction recorded in it, including the
+ * paired CASH legs of its trades.
+ *
+ * Scoped to the caller server-side: `AccountService.delete_account`
+ * resolves the account through the same ownership check every read makes,
+ * so another user's id is a 404 rather than a delete.
+ */
+export async function deleteAccount(
+  accountId: string,
+): Promise<DeleteAccountResult> {
+  const res = await fetch(
+    `${resolveBase()}/accounts/${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Failed to delete account (${res.status})`);
+  }
+  return res.json();
+}
+
 // ─── Transactions / Positions ────────────────────────────────
 
 export type DepositRequest = components["schemas"]["DepositRequest"];

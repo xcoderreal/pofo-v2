@@ -34,20 +34,20 @@ export default defineConfig({
    * then writes" a declared fact rather than an alphabetical accident of
    * the filenames.
    *
-   * `writes` still keeps its own blast radius small: it records into
-   * accounts it creates itself, so its assertions never depend on what a
-   * previous run left behind.
+   * `writes` still keeps its own blast radius small: every spec in it
+   * records into accounts it creates itself, so its assertions never
+   * depend on what a previous run left behind.
    */
   projects: [
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
-      testIgnore: /transaction-entry\.spec\.ts/,
+      testIgnore: /(transaction-entry|accounts)\.spec\.ts/,
     },
     {
       name: "chromium-writes",
       use: { ...devices["Desktop Chrome"] },
-      testMatch: /transaction-entry\.spec\.ts/,
+      testMatch: /(transaction-entry|accounts)\.spec\.ts/,
       dependencies: ["chromium"],
     },
   ],
