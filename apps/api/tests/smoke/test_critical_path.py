@@ -35,6 +35,13 @@ def test_unknown_route_404(http_client: httpx.Client):
     assert resp.status_code == 404
 
 
+def test_me_reachable(http_client: httpx.Client):
+    """A broken auth path locks everyone out — smoke it directly."""
+    resp = http_client.get("/me")
+    assert resp.status_code == 200
+    assert "user_id" in resp.json()
+
+
 def test_create_read_delete_roundtrip(http_client: httpx.Client, allow_writes: bool):
     if not allow_writes:
         pytest.skip("writes disabled for this target (set SKELETON_E2E_ALLOW_WRITES=1)")

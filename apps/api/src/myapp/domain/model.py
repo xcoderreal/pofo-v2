@@ -8,6 +8,11 @@ class Category:
 
 
 @dataclass
+class User:
+    id: str
+
+
+@dataclass
 class Item:
     id: str
     name: str

@@ -28,7 +28,7 @@ RLS pushes user-scoping enforcement down to the database row instead of trusting
 
 **Every migration that creates a user-owned table includes its RLS policy in the same migration** — not a follow-up. See `docs/security.md`'s checklist and `docs/environments.md`'s migration section.
 
-`get_current_user` in `MYAPP_AUTH=supabase` mode shrinks to: verify the Supabase JWT (their JWKS), return claims as a domain `User`. The service layer is identical to the stub path — still `user_id: str` in, domain objects out.
+`get_current_user` in `MYAPP_AUTH=supabase` mode shrinks to: verify the Supabase JWT, return claims as a domain `User`. The service layer is identical to the stub path — still `user_id: str` in, domain objects out.
 
 ## Why `stub` exists, and why it's not a production shortcut
 
@@ -49,7 +49,7 @@ RLS pushes user-scoping enforcement down to the database row instead of trusting
 
 ## Crypto/library choices
 
-- **JWT verification:** verify against Supabase's JWKS (their library/endpoint), not hand-rolled HS256 — algorithm pinning and `exp`/`nbf` validation matter here.
+- **JWT verification:** HS256 with the project's shared JWT secret (`MYAPP_SUPABASE_JWT_SECRET`), via `pyjwt` — algorithm pinned explicitly (never `alg: none`), `aud`/`exp` validated. This matches the real reference implementation's working pattern, not a shortcut: Supabase issues HS256 tokens signed with a per-project shared secret by default, and verifying against it directly is the documented, supported approach — no JWKS fetch/cache/rotation machinery is needed unless a project is specifically configured for asymmetric (RS256/ES256) signing keys, which is a real but separate upgrade path, not the default.
 - No password hashing is implemented directly in this codebase — Supabase Auth owns credential storage.
 
 ## Adding auth to a new resource
