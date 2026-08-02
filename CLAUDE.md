@@ -214,3 +214,11 @@ See `scripts/init-project.py` for what exactly gets renamed. Then edit `README.m
 - [`docs/bootstrap.md`](docs/bootstrap.md) — install + worktree troubleshooting
 - [`docs/vercel.md`](docs/vercel.md) — deploy flow, env vars, gotchas
 - [`docs/pinned-versions.md`](docs/pinned-versions.md) — Expo SDK 54 version pins (critical)
+- [`docs/domain-model.md`](docs/domain-model.md) — portfolio-tracker entities, FIFO invariants, the query interface
+- [`docs/environments.md`](docs/environments.md) — auth/persistence toggle matrix, dev-user reseeding
+- [`docs/auth.md`](docs/auth.md) — Supabase Auth + JWT + RLS design
+- [`docs/security.md`](docs/security.md) — RLS checklist, production access control
+- [`docs/deployment.md`](docs/deployment.md) — Vercel + Supabase dev/test/prod, migration promotion
+- [`docs/non-goals.md`](docs/non-goals.md) — explicitly deferred features and why
+- [`CONTEXT.md`](CONTEXT.md) / [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — product context and domain glossary
+- [`engineering-principles.md`](engineering-principles.md) — durable engineering taste decisions
