@@ -215,6 +215,8 @@ See `scripts/init-project.py` for what exactly gets renamed. Then edit `README.m
 - [`docs/vercel.md`](docs/vercel.md) — deploy flow, env vars, gotchas
 - [`docs/pinned-versions.md`](docs/pinned-versions.md) — Expo SDK 54 version pins (critical)
 - [`docs/domain-model.md`](docs/domain-model.md) — portfolio-tracker entities, FIFO invariants, the query interface
+- [`docs/adr/0001-dashboard-v2.md`](docs/adr/0001-dashboard-v2.md) — **read before touching cash, `equity` scope, or the query surface.** Why trades auto-post a CASH leg, why `trade_id` is stored rather than derived, why `equity` excludes CASH — each with the alternatives that were rejected
+- [`docs/design/dashboard_v2/`](docs/design/dashboard_v2/) — the dashboard design prototype. [`behaviour.md`](docs/design/dashboard_v2/behaviour.md) is the binding behaviour spec for the dashboard tickets; the prototype's own logic is readable in `prototype-source.js`
 - [`docs/environments.md`](docs/environments.md) — auth/persistence toggle matrix, dev-user reseeding
 - [`docs/auth.md`](docs/auth.md) — Supabase Auth + JWT + RLS design
 - [`docs/security.md`](docs/security.md) — RLS checklist, production access control
