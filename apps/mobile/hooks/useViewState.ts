@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   INITIAL_VIEW_STATE,
   resolveLevel,
@@ -33,8 +40,8 @@ export interface ViewStateController {
 }
 
 /**
- * The Portfolio tab's view state, plus the Undo machinery that guards
- * every filter-clearing change.
+ * The dashboard's view state, plus the Undo machinery that guards every
+ * filter-clearing change.
  *
  * Two update paths rather than one, because the distinction is the whole
  * feature: drilling *in* is something the user just did and can see, so
@@ -61,8 +68,8 @@ export function useViewState(
     }
   }, []);
 
-  // A pending timer outliving the screen would call setState on an
-  // unmounted component; navigating to Grid mid-toast is enough to hit it.
+  // A pending timer outliving the provider would call setState on an
+  // unmounted component.
   useEffect(() => clearTimer, [clearTimer]);
 
   const update = useCallback((next: ViewState) => setState(next), []);
@@ -103,4 +110,28 @@ export function useViewState(
     undo,
     dismissToast,
   };
+}
+
+/**
+ * The one view state, shared by the Portfolio and Grid tabs.
+ *
+ * Held above the tab navigator (`app/_layout.tsx`) rather than in the
+ * Portfolio screen, because a Grid cell tap *is* a drill-down: it selects
+ * an instrument and an account and then shows the Portfolio tab at that
+ * slice (behaviour.md § Grid). Two independent copies of `ViewState`
+ * would make that a message-passing problem, and route params would make
+ * it a second, parallel representation of a scope the app already models
+ * exactly once.
+ *
+ * The same shape as `ThemeContext`: the context is exported and the
+ * provider is wired in the layout, so this file stays free of JSX.
+ */
+export const ViewStateContext = createContext<ViewStateController | null>(null);
+
+export function useSharedViewState(): ViewStateController {
+  const controller = useContext(ViewStateContext);
+  if (controller === null) {
+    throw new Error("useSharedViewState requires a ViewStateContext provider");
+  }
+  return controller;
 }

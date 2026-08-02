@@ -150,8 +150,8 @@ export interface PositionsQuery {
 }
 
 /** Every computed Position across a scope in one call. The client pivots
- * these rows into the Holdings list, the Accounts list and (from #20) the
- * Grid matrix — see docs/adr/0001-dashboard-v2.md § 5. */
+ * these rows into the Holdings list, the Accounts list and the Grid
+ * matrix — see docs/adr/0001-dashboard-v2.md § 5. */
 export async function fetchPositions(
   query: PositionsQuery = {},
 ): Promise<PositionRow[]> {

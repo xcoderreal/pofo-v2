@@ -19,7 +19,7 @@ import { ScopeChips } from "@/components/ScopeChips";
 import { UndoToast } from "@/components/UndoToast";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useTheme } from "@/hooks/useTheme";
-import { useViewState } from "@/hooks/useViewState";
+import { useSharedViewState } from "@/hooks/useViewState";
 import { WHOLE_PORTFOLIO_KEY } from "@/lib/accounts";
 import {
   clearAccount,
@@ -83,7 +83,9 @@ export default function PortfolioScreen() {
   // The four levels are derived from the scope, not routed to: the same
   // screen answers "whole portfolio", "one account", "one instrument" and
   // "one instrument in one account" (behaviour.md § Navigation and scope).
-  const view = useViewState();
+  // Shared with the Grid tab, which selects a scope and then sends you
+  // here to read it (behaviour.md § Grid).
+  const view = useSharedViewState();
   const { state, level } = view;
   const [sheet, setSheet] = useState<SheetKind | null>(null);
 

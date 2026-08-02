@@ -153,7 +153,7 @@ export function useDashboard(
   // One unscoped positions call feeds every level. The rows are keyed by
   // (account, instrument), so narrowing is a filter rather than a
   // refetch — which is what makes drilling in instant and keeps the
-  // stat card, the lists and (from #20) the Grid matrix reading the same
+  // stat card, the lists and the Grid matrix reading the same
   // batched call (docs/adr/0001-dashboard-v2.md § 5).
   const positions = usePositions();
   const scopedPositions = useMemo(

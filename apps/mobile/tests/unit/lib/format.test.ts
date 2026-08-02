@@ -1,10 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import {
+  formatCompactUsd,
   formatPercent,
   formatShares,
   formatSigned,
   formatUsd,
 } from "@/lib/format";
+
+describe("formatCompactUsd — the matrix cell's width budget", () => {
+  test("drops to k and M as the figure grows", () => {
+    expect(formatCompactUsd(412)).toBe("$412");
+    expect(formatCompactUsd(1234)).toBe("$1.2k");
+    expect(formatCompactUsd(184_512)).toBe("$185k");
+    expect(formatCompactUsd(2_400_000)).toBe("$2.4M");
+    expect(formatCompactUsd(24_000_000)).toBe("$24M");
+  });
+
+  test("keeps the typographic minus the rest of the app uses", () => {
+    expect(formatCompactUsd(-1500)).toBe("−$1.5k");
+  });
+
+  test("a zero cell reads as a zero, not as an empty one", () => {
+    expect(formatCompactUsd(0)).toBe("$0");
+  });
+});
 
 describe("formatUsd", () => {
   test("keeps cents below five figures", () => {

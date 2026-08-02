@@ -67,4 +67,22 @@ export const signalColors = {
   flat: "#8A9099",
 };
 
+/**
+ * Categorical hues for the Grid's allocation bar, cycled by position.
+ *
+ * Categorical, not semantic: these say "a different account", nothing
+ * more, so they deliberately avoid the up/down pair above. Cycled rather
+ * than sized to the account list, because the number of accounts is not
+ * capped anywhere (behaviour.md § Grid) and running out of colours must
+ * not mean running out of segments.
+ */
+export const allocationColors = [
+  "#7EE2A8",
+  "#6FA8FF",
+  "#C08CFF",
+  "#FFC46B",
+  "#FF8FA3",
+  "#5FD8D2",
+];
+
 export type Theme = typeof lightTheme;

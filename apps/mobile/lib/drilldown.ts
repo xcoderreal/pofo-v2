@@ -208,6 +208,41 @@ export function clearAccount(state: ViewState): ViewState {
   return { ...state, accountId: null };
 }
 
+/**
+ * A tap on the Grid — a matrix cell, a row header, a column header or an
+ * allocation segment — as a scope.
+ *
+ * The Grid answers "where is everything" for the whole portfolio, so its
+ * taps *set* the scope rather than deepening it: a cell is a slice, a row
+ * header is that instrument across all accounts, a column header is that
+ * account. Anything the Portfolio tab happened to have selected is
+ * replaced, which is the prototype's own intent — its `slice(sym, acct)`
+ * passes `acct` even when null, and its column tap declares
+ * `level: 'account'` outright.
+ *
+ * Composed from the two ordinary transitions rather than assembling a
+ * `ViewState` directly, so every auto-adjustment applies exactly as it
+ * does on the Portfolio tab (behaviour.md § Auto-adjustments). An account
+ * only ever gets a column here by holding an instrument, so
+ * `holdsInstruments` is true by construction — the empty-account repair
+ * has nothing to fire on.
+ */
+export function selectFromGrid(
+  state: ViewState,
+  target: { instrumentId: string | null; accountId: string | null },
+): ViewState {
+  const cleared = clearAccount(clearInstrument(state));
+  const withInstrument =
+    target.instrumentId === null
+      ? cleared
+      : selectInstrument(cleared, target.instrumentId);
+  return target.accountId === null
+    ? withInstrument
+    : selectAccount(withInstrument, target.accountId, {
+        holdsInstruments: true,
+      });
+}
+
 // ─── Chips ────────────────────────────────────────────────────
 
 export interface ScopeChip {

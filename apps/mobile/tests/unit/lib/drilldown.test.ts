@@ -7,6 +7,7 @@ import {
   resolveLevel,
   scopeParams,
   selectAccount,
+  selectFromGrid,
   selectInstrument,
   type ViewState,
 } from "@/lib/drilldown";
@@ -220,6 +221,73 @@ describe("clearing a chip", () => {
 
     expect(clearInstrument(before)).toEqual({ ...before, instrumentId: null });
     expect(clearAccount(before)).toEqual({ ...before, accountId: null });
+  });
+});
+
+describe("selectFromGrid — a Grid tap is a scope, not a step", () => {
+  test("a cell sets both slots", () => {
+    expect(
+      selectFromGrid(state(), { instrumentId: "goog", accountId: "ira" }),
+    ).toMatchObject({ instrumentId: "goog", accountId: "ira" });
+  });
+
+  test("a row header is that instrument across every account", () => {
+    // Not "deepen from wherever the Portfolio tab was left": the Grid is
+    // a whole-portfolio view, so a row header means all accounts.
+    expect(
+      selectFromGrid(state({ accountId: "ira" }), {
+        instrumentId: "goog",
+        accountId: null,
+      }),
+    ).toMatchObject({ instrumentId: "goog", accountId: null });
+  });
+
+  test("a column header is that account across every instrument", () => {
+    expect(
+      selectFromGrid(state({ instrumentId: "goog" }), {
+        instrumentId: null,
+        accountId: "ira",
+      }),
+    ).toMatchObject({ instrumentId: null, accountId: "ira" });
+  });
+
+  test("carries the auto-adjustments the ordinary transitions apply", () => {
+    // Auto-adjustment 2: cash_balance has no instrument dimension, so a
+    // cell tap has to switch back to equity or build a query the API 400s.
+    expect(
+      selectFromGrid(state({ metric: "cash_balance" }), {
+        instrumentId: "goog",
+        accountId: "ira",
+      }).metric,
+    ).toBe("equity");
+
+    // Auto-adjustment 3's mirror: market_price has no account dimension.
+    expect(
+      selectFromGrid(state({ metric: "market_price", instrumentId: "goog" }), {
+        instrumentId: null,
+        accountId: "ira",
+      }).metric,
+    ).toBe("equity");
+  });
+
+  test("repairs a metric the new scope cannot answer", () => {
+    // share_count needs an instrument; a column header leaves none.
+    expect(
+      selectFromGrid(state({ metric: "share_count", instrumentId: "goog" }), {
+        instrumentId: null,
+        accountId: "ira",
+      }),
+    ).toMatchObject({ metric: "equity", instrumentId: null, accountId: "ira" });
+  });
+
+  test("leaves the range and granularity alone", () => {
+    const before = state({ rangeKey: "3M", granularity: "weekly" });
+    const after = selectFromGrid(before, {
+      instrumentId: "goog",
+      accountId: null,
+    });
+    expect(after.rangeKey).toBe("3M");
+    expect(after.granularity).toBe("weekly");
   });
 });
 

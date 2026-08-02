@@ -100,6 +100,7 @@ function valueScale(
   values: number[],
   height: number,
   includeZero: boolean,
+  padY: number = PAD_Y,
 ): (value: number) => number {
   let min = Math.min(...values);
   let max = Math.max(...values);
@@ -113,7 +114,7 @@ function valueScale(
     max += 1;
   }
   return (value) =>
-    height - PAD_Y - ((value - min) / (max - min)) * (height - PAD_Y * 2);
+    height - padY - ((value - min) / (max - min)) * (height - padY * 2);
 }
 
 /**
@@ -136,10 +137,20 @@ export function pointYs(points: ChartPoint[], height: number): number[] {
   return points.map((p) => y(p.value));
 }
 
+/**
+ * The line and its fill.
+ *
+ * `padY` is what makes this reusable at sparkline size. The default 10px
+ * of headroom is right for a 168px chart and catastrophic for a 28px
+ * sparkline — `height - 2 * padY` goes negative and the whole series draws
+ * upside down. The Grid's account rows pass a padding proportionate to
+ * their own height rather than owning a second copy of this projection.
+ */
 export function buildPath(
   points: ChartPoint[],
   width: number,
   height: number,
+  padY: number = PAD_Y,
 ): ChartPaths {
   if (points.length === 0) return { line: "", area: "" };
 
@@ -147,6 +158,7 @@ export function buildPath(
     points.map((p) => p.value),
     height,
     false,
+    padY,
   );
   const xs = pointXs(points, width);
 

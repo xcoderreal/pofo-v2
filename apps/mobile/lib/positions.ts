@@ -107,28 +107,71 @@ export function pointsByGroup(
 }
 
 /**
- * Add two sparse series pointwise, treating an absent timestamp as zero.
+ * Add two sparse series pointwise, over the union of their timestamps.
  *
  * Used to build "account value including cash" from the `equity` and
- * `cash_balance` series. Zero is the right default rather than a skip: an
- * account with cash but no holdings genuinely had zero equity that day,
- * and dropping the timestamp would lose the range-start sample the
- * percentage depends on.
+ * `cash_balance` series. Both are **levels**, and the two rules below
+ * follow from that:
+ *
+ * - Before a series' first sample it contributes **zero**. An account
+ *   with cash but no holdings genuinely had zero equity, and dropping the
+ *   timestamp instead would lose the range-start sample the percentage
+ *   depends on.
+ * - After it, a timestamp the series doesn't carry contributes its
+ *   **last known value**, not zero. The query interface samples equity
+ *   only at boundaries with a real price, so the final boundary of any
+ *   range ending on a non-trading day is present in `cash_balance` and
+ *   absent from `equity` — and reading that absence as zero drew every
+ *   account's sparkline falling off a cliff into its cash balance on the
+ *   last point. A level with no fresh sample is unchanged, not gone.
  */
 export function addSeries(
   a: readonly RangePoint[] | undefined,
   b: readonly RangePoint[] | undefined,
 ): RangePoint[] {
-  const totals = new Map<string, number>();
-  for (const point of a ?? []) {
-    totals.set(point.timestamp, (totals.get(point.timestamp) ?? 0) + point.value);
-  }
-  for (const point of b ?? []) {
-    totals.set(point.timestamp, (totals.get(point.timestamp) ?? 0) + point.value);
-  }
-  return [...totals.entries()]
-    .map(([timestamp, value]) => ({ timestamp, value }))
-    .sort((x, y) => (x.timestamp < y.timestamp ? -1 : 1));
+  const left = chronological(a);
+  const right = chronological(b);
+  const timestamps = [
+    ...new Set([...left, ...right].map((point) => point.timestamp)),
+  ].sort();
+
+  let i = 0;
+  let j = 0;
+  let carriedLeft = 0;
+  let carriedRight = 0;
+  return timestamps.map((timestamp) => {
+    while (i < left.length && left[i].timestamp <= timestamp) {
+      carriedLeft = left[i++].value;
+    }
+    while (j < right.length && right[j].timestamp <= timestamp) {
+      carriedRight = right[j++].value;
+    }
+    return { timestamp, value: carriedLeft + carriedRight };
+  });
+}
+
+function chronological(
+  points: readonly RangePoint[] | undefined,
+): RangePoint[] {
+  return [...(points ?? [])].sort((x, y) => (x.timestamp < y.timestamp ? -1 : 1));
+}
+
+/**
+ * Every group's series added into one.
+ *
+ * The Grid's total tile needs the whole portfolio's history, and it
+ * already holds the per-account series its sparklines are drawn from —
+ * so the total is a fold over those rather than a fifth query
+ * (docs/adr/0001-dashboard-v2.md § 5 is the same instinct: the client
+ * pivots what it already has instead of asking again).
+ */
+export function sumSeries(
+  byGroup: Record<string, readonly RangePoint[]>,
+): RangePoint[] {
+  return Object.values(byGroup).reduce<RangePoint[]>(
+    (total, series) => addSeries(total, series),
+    [],
+  );
 }
 
 /**
@@ -219,10 +262,32 @@ export function rowChangePercent(args: {
   const { currentValue, points, rangeStart, currentValueIsRangeEnd } = args;
   if (!currentValueIsRangeEnd) return null;
   if (currentValue === null || !Number.isFinite(currentValue)) return null;
+  const opening = openingValue(points, rangeStart);
+  if (opening === null) return null;
+  return changePercent(opening, currentValue);
+}
+
+/**
+ * What a series was worth when the range opened, or null if it has
+ * nothing at or before that date.
+ *
+ * The backend's first sample boundary *is* the range start
+ * (`period_boundaries`), and a series only begins at its subject's first
+ * activity — so "nothing at or before the start" means the thing being
+ * measured did not exist yet, which is precisely the case behaviour.md
+ * § Percentages says renders as a dash rather than a fabricated number.
+ *
+ * Looked up by timestamp rather than taken as `points[0]`, so it stays
+ * correct if a caller ever hands over a series wider than the range it is
+ * asking about.
+ */
+export function openingValue(
+  points: readonly RangePoint[] | undefined,
+  rangeStart: string,
+): number | null {
   const atOrBefore = (points ?? []).filter((p) => p.timestamp <= rangeStart);
   const opening = atOrBefore[atOrBefore.length - 1];
-  if (!opening) return null;
-  return changePercent(opening.value, currentValue);
+  return opening ? opening.value : null;
 }
 
 // ─── Pivots ───────────────────────────────────────────────────

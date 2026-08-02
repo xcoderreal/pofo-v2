@@ -9,9 +9,11 @@ import {
   cashBalanceFor,
   changePercent,
   combineAccountSeries,
+  openingValue,
   pointsByGroup,
   rowChangePercent,
   splitClosed,
+  sumSeries,
   type PositionRow,
 } from "@/lib/positions";
 
@@ -237,6 +239,43 @@ describe("addSeries", () => {
     ]);
   });
 
+  test("carries a level forward past a timestamp it has no sample for", () => {
+    // The real case: `equity` is only sampled at boundaries with a price,
+    // so a range ending on a non-trading day has a final `cash_balance`
+    // point with no equity beside it. Read as zero, the account's value
+    // drops to its cash balance on the last point of every sparkline.
+    const sum = addSeries(
+      [
+        { timestamp: "2026-01-01", value: 100 },
+        { timestamp: "2026-02-01", value: 120 },
+      ],
+      [
+        { timestamp: "2026-01-01", value: 40 },
+        { timestamp: "2026-02-01", value: 40 },
+        { timestamp: "2026-02-02", value: 40 },
+      ],
+    );
+
+    expect(sum[sum.length - 1]).toEqual({
+      timestamp: "2026-02-02",
+      value: 160,
+    });
+  });
+
+  test("still contributes zero before a series begins", () => {
+    const sum = addSeries(
+      [{ timestamp: "2026-02-01", value: 100 }],
+      [{ timestamp: "2026-01-01", value: 40 }],
+    );
+
+    expect(sum).toEqual([
+      { timestamp: "2026-01-01", value: 40 },
+      // 100 + 40 carried: the cash side has no February sample, but it
+      // has not gone away.
+      { timestamp: "2026-02-01", value: 140 },
+    ]);
+  });
+
   test("results stay in chronological order", () => {
     const sum = addSeries(
       [
@@ -277,6 +316,48 @@ describe("combineAccountSeries", () => {
     );
 
     expect(combined.acc1).toEqual([{ timestamp: "2026-01-01", value: 1000 }]);
+  });
+});
+
+describe("sumSeries — the whole portfolio, folded from its accounts", () => {
+  test("adds every group pointwise over the union of their timestamps", () => {
+    expect(
+      sumSeries({
+        acc1: [
+          { timestamp: "2026-01-01", value: 1000 },
+          { timestamp: "2026-02-01", value: 1100 },
+        ],
+        // Opened mid-range: absent means zero, not "skip this date", or
+        // the range-start sample the total's percentage needs would move.
+        acc2: [{ timestamp: "2026-02-01", value: 400 }],
+      }),
+    ).toEqual([
+      { timestamp: "2026-01-01", value: 1000 },
+      { timestamp: "2026-02-01", value: 1500 },
+    ]);
+  });
+
+  test("is empty for a portfolio with no accounts", () => {
+    expect(sumSeries({})).toEqual([]);
+  });
+});
+
+describe("openingValue", () => {
+  test("takes the last sample at or before the range start", () => {
+    const points = [
+      { timestamp: "2025-12-01", value: 900 },
+      { timestamp: "2026-01-01", value: 1000 },
+      { timestamp: "2026-02-01", value: 1100 },
+    ];
+    expect(openingValue(points, "2026-01-01")).toBe(1000);
+    expect(openingValue(points, "2026-01-15")).toBe(1000);
+  });
+
+  test("is null when the series begins inside the range", () => {
+    expect(
+      openingValue([{ timestamp: "2026-02-01", value: 1100 }], "2026-01-01"),
+    ).toBeNull();
+    expect(openingValue(undefined, "2026-01-01")).toBeNull();
   });
 });
 

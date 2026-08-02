@@ -16,6 +16,32 @@ export function formatUsd(value: number): string {
   })}`;
 }
 
+/**
+ * `$1.2k`, `$184k`, `$2.4M` — money in a column too narrow for the full
+ * figure.
+ *
+ * The Grid's matrix is the only caller: with a column per account and no
+ * cap on how many there are, a cell that renders `$184,512.00` either
+ * pushes the table absurdly wide or truncates mid-number. Rounded to
+ * three significant-ish digits, which is all a cross-sectional glance
+ * needs — the exact figure is one tap away in the slice.
+ *
+ * Not `Intl.NumberFormat`'s `notation: "compact"`: it renders `$184K`
+ * with a capital K and localises the suffix, and the design's own
+ * treatment is lowercase.
+ */
+export function formatCompactUsd(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "−" : "";
+  if (abs >= 1_000_000) {
+    return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  }
+  if (abs >= 1_000) {
+    return `${sign}$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+  }
+  return `${sign}$${Math.round(abs)}`;
+}
+
 /** Always carries an explicit sign — `+$120.00`, `−$3.40`. */
 export function formatSigned(value: number): string {
   return `${value >= 0 ? "+" : "−"}${formatUsd(Math.abs(value))}`;

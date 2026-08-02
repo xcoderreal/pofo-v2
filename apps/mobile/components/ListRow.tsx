@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { signalColors } from "@/utils/theme";
@@ -12,6 +12,9 @@ interface Props {
   detail: string;
   detailTestID: string;
   detailColor: string;
+  /** Rendered between the text and the figures — the Grid's account
+   * sparkline. Optional, so every existing list is unchanged. */
+  accessory?: ReactNode;
   /** Omitted for a row that leads nowhere, which then renders as a plain
    * `View` — a pressable that does nothing is worse than a static row. */
   onPress?: () => void;
@@ -35,6 +38,7 @@ export function ListRow({
   detail,
   detailTestID,
   detailColor,
+  accessory,
   onPress,
 }: Props) {
   const theme = useTheme();
@@ -49,6 +53,7 @@ export function ListRow({
           {subtitle}
         </Text>
       </View>
+      {accessory}
       <View style={styles.rowValues}>
         <Text testID={valueTestID} style={styles.rowValue}>
           {value}
