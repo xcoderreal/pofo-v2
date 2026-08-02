@@ -6,10 +6,17 @@ import type { ScopeChip } from "@/lib/drilldown";
 interface Props {
   chips: ScopeChip[];
   onClear: (kind: ScopeChip["kind"]) => void;
-  /** Opens the Accounts sheet. The account chip is both the indicator and
+  /**
+   * Opens the Accounts sheet. The account chip is both the indicator and
    * the control: tapping its body switches account, tapping its ✕ clears
-   * the filter entirely. */
-  onOpenAccounts: () => void;
+   * the filter entirely.
+   *
+   * Omitted on the Activity tab, which has no Accounts sheet of its own —
+   * the chips there report and dismiss the shared scope, nothing more. The
+   * "All accounts" button then isn't rendered at all rather than rendered
+   * inert, same reasoning as `ListRow`'s optional `onPress`.
+   */
+  onOpenAccounts?: () => void;
 }
 
 /**
@@ -38,7 +45,7 @@ export function ScopeChips({ chips, onClear, onOpenAccounts }: Props) {
         <View key={chip.kind} testID={`chip-${chip.kind}`} style={styles.chip}>
           <Pressable
             testID={`chip-${chip.kind}-open`}
-            disabled={chip.kind !== "account"}
+            disabled={chip.kind !== "account" || onOpenAccounts === undefined}
             onPress={onOpenAccounts}
             style={styles.chipBody}
           >
@@ -60,7 +67,7 @@ export function ScopeChips({ chips, onClear, onOpenAccounts }: Props) {
         </View>
       ))}
 
-      {hasAccount ? null : (
+      {hasAccount || onOpenAccounts === undefined ? null : (
         <Pressable
           testID="all-accounts-chip"
           onPress={onOpenAccounts}

@@ -98,7 +98,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Transactions */
+        get: operations["list_transactions_transactions_get"];
         put?: never;
         /** Create Transaction */
         post: operations["create_transaction_transactions_post"];
@@ -346,6 +347,40 @@ export interface components {
             /** Name */
             name: string;
             asset_class: components["schemas"]["AssetClass"];
+        };
+        /**
+         * LedgerEntryResponse
+         * @description A TransactionResponse plus the gain that sell booked.
+         *
+         *     Extends rather than redeclares so `trade_id` cannot drift apart from
+         *     the write path's own response — the Activity feed's whole suppression
+         *     rule is a predicate on that field reaching the client intact
+         *     (docs/adr/0001-dashboard-v2.md § 2).
+         *
+         *     null on a BUY: opening a lot books no gain, and a 0 there would read
+         *     as "broke even" beside every purchase.
+         */
+        LedgerEntryResponse: {
+            /** Id */
+            id: string;
+            /** Account Id */
+            account_id: string;
+            /** Instrument Id */
+            instrument_id: string;
+            type: components["schemas"]["TransactionType"];
+            /** Quantity */
+            quantity: string;
+            /** Price */
+            price: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Trade Id */
+            trade_id: string | null;
+            /** Realized Gain */
+            realized_gain: string | null;
         };
         /**
          * Metric
@@ -651,6 +686,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_transactions_transactions_get: {
+        parameters: {
+            query?: {
+                instruments?: string[] | null;
+                accounts?: string[] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerEntryResponse"][];
                 };
             };
             /** @description Validation Error */

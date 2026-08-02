@@ -168,6 +168,42 @@ export async function fetchPositions(
   return res.json();
 }
 
+// ─── Ledger (Activity feed) ─────────────────────────────────
+
+export type LedgerEntry = components["schemas"]["LedgerEntryResponse"];
+
+export interface LedgerQuery {
+  /** Repeated query params, same convention as the positions query. */
+  instruments?: string[];
+  accounts?: string[];
+}
+
+/**
+ * Every Transaction in scope, newest first — including the CASH leg
+ * auto-posted beside each trade.
+ *
+ * Those legs arrive carrying their `trade_id` and are filtered out
+ * *client-side* by `lib/activity.ts`. That split is deliberate: the
+ * suppression rule is a display concern, and a server that pre-filtered
+ * would leave the client unable to tell a trade's cash leg from a genuine
+ * Deposit at all (docs/adr/0001-dashboard-v2.md § 2).
+ */
+export async function fetchLedger(
+  query: LedgerQuery = {},
+): Promise<LedgerEntry[]> {
+  const params = new URLSearchParams();
+  for (const id of query.instruments ?? []) params.append("instruments", id);
+  for (const id of query.accounts ?? []) params.append("accounts", id);
+
+  const suffix = params.toString() ? `?${params}` : "";
+  const res = await fetch(`${resolveBase()}/transactions${suffix}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Failed to fetch transactions (${res.status})`);
+  }
+  return res.json();
+}
+
 // ─── Portfolio summary ──────────────────────────────────────
 
 export type PortfolioSummary =

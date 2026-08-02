@@ -45,6 +45,7 @@ from myapp.service.instrument_service import (
     DuplicateIdError as InstrumentDuplicateIdError,
 )
 from myapp.service.instrument_service import DuplicateSymbolError, InstrumentService
+from myapp.service.ledger_service import LedgerService
 from myapp.service.positions_service import PositionsService
 from myapp.service.price_service import PriceService
 from myapp.service.query_service import (
@@ -719,6 +720,71 @@ def list_positions(
             unrealized_gain=row.unrealized_gain,
         )
         for row in rows
+    ]
+
+
+# ─── Ledger dependencies ──────────────────────────────────────
+
+
+def get_ledger_service(
+    account_service: AccountService = Depends(get_account_service),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
+    transaction_service: TransactionService = Depends(get_transaction_service),
+    gains_service: GainsService = Depends(get_gains_service),
+) -> LedgerService:
+    return LedgerService(
+        account_service=account_service,
+        instrument_service=instrument_service,
+        transaction_service=transaction_service,
+        gains_service=gains_service,
+    )
+
+
+# ─── Ledger schemas ───────────────────────────────────────────
+
+
+class LedgerEntryResponse(TransactionResponse):
+    """A TransactionResponse plus the gain that sell booked.
+
+    Extends rather than redeclares so `trade_id` cannot drift apart from
+    the write path's own response — the Activity feed's whole suppression
+    rule is a predicate on that field reaching the client intact
+    (docs/adr/0001-dashboard-v2.md § 2).
+
+    null on a BUY: opening a lot books no gain, and a 0 there would read
+    as "broke even" beside every purchase.
+    """
+
+    realized_gain: Decimal | None
+
+
+# ─── Ledger routes ────────────────────────────────────────────
+# The Activity tab's feed. Returns *every* row in scope, paired CASH legs
+# included: which of them Activity hides is a display rule keyed on the
+# stored `trade_id`, and a server that pre-filtered them would leave the
+# client unable to tell a trade's cash leg from a genuine Deposit at all
+# (docs/design/dashboard_v2/behaviour.md § Activity).
+#
+# Scope params follow /portfolio/positions' convention: repeated values,
+# with "all" or omission meaning no filter.
+
+
+@app.get("/transactions", response_model=list[LedgerEntryResponse])
+def list_transactions(
+    instruments: list[str] | None = Query(default=None),
+    accounts: list[str] | None = Query(default=None),
+    current_user: User = Depends(get_current_user),
+    service: LedgerService = Depends(get_ledger_service),
+):
+    entries = service.list_entries(
+        user_id=current_user.id, accounts=accounts, instruments=instruments
+    )
+    return [
+        LedgerEntryResponse(
+            **_to_transaction_response(entry.transaction).model_dump(),
+            realized_gain=entry.realized_gain,
+        )
+        for entry in entries
     ]
 
 

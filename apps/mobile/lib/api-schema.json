@@ -227,14 +227,14 @@
         "summary": "Create Transaction",
         "operationId": "create_transaction_transactions_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateTransactionRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -243,6 +243,76 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Transactions",
+        "operationId": "list_transactions_transactions_get",
+        "parameters": [
+          {
+            "name": "instruments",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instruments"
+            }
+          },
+          {
+            "name": "accounts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accounts"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LedgerEntryResponse"
+                  },
+                  "title": "Response List Transactions Transactions Get"
                 }
               }
             }
@@ -895,6 +965,77 @@
           "asset_class"
         ],
         "title": "InstrumentResponse"
+      },
+      "LedgerEntryResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "instrument_id": {
+            "type": "string",
+            "title": "Instrument Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TransactionType"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Quantity"
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "trade_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Id"
+          },
+          "realized_gain": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Gain"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "instrument_id",
+          "type",
+          "quantity",
+          "price",
+          "timestamp",
+          "trade_id",
+          "realized_gain"
+        ],
+        "title": "LedgerEntryResponse",
+        "description": "A TransactionResponse plus the gain that sell booked.\n\nExtends rather than redeclares so `trade_id` cannot drift apart from\nthe write path's own response \u2014 the Activity feed's whole suppression\nrule is a predicate on that field reaching the client intact\n(docs/adr/0001-dashboard-v2.md \u00a7 2).\n\nnull on a BUY: opening a lot books no gain, and a 0 there would read\nas \"broke even\" beside every purchase."
       },
       "Metric": {
         "type": "string",

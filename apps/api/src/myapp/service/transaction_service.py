@@ -82,6 +82,25 @@ class TransactionService:
         ]
         return min(timestamps).date() if timestamps else None
 
+    def list_by_account(
+        self, account_id: str, user_id: str
+    ) -> list[Transaction] | None:
+        """Every Transaction on one of the user's accounts, or None if the
+        account isn't theirs (or doesn't exist) — the same "same signal
+        either way" treatment `get_position` gives an unowned account.
+
+        Unfiltered on purpose: the paired CASH legs are *in* this list.
+        Which of them the Activity feed hides is a display rule keyed on
+        the stored `trade_id` (docs/adr/0001-dashboard-v2.md § 2), not a
+        property of the ledger, and a read that quietly dropped rows would
+        make the ledger endpoint disagree with the position math computed
+        from the very same rows.
+        """
+        account = self.account_repo.get(account_id)
+        if account is None or account.user_id != user_id:
+            return None
+        return self.transaction_repo.list_by_account(account_id)
+
     def get_position(
         self, account_id: str, instrument_id: str, user_id: str
     ) -> Position | None:
