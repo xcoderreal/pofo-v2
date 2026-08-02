@@ -1,5 +1,9 @@
 import type { components } from "./api-types";
 import { resolveApiBaseUrl } from "./env";
+import {
+  parseInsufficientFunds,
+  type InsufficientFundsDetail,
+} from "./transactionEntry";
 
 const BASE_URL = resolveApiBaseUrl();
 
@@ -71,6 +75,50 @@ export async function createAccount(
 
 // ─── Transactions / Positions ────────────────────────────────
 
+export type DepositRequest = components["schemas"]["DepositRequest"];
+
+/**
+ * A rejected write, carrying the server's structured verdict when it had
+ * one.
+ *
+ * A `409` on a trade means one of two different things — the account holds
+ * too few units, or too little cash for the CASH leg the trade auto-posts
+ * — and only the second is fixed by recording a Deposit first
+ * (docs/adr/0001-dashboard-v2.md § 4). The distinction reaches the UI as a
+ * field rather than as a sentence to substring-match.
+ */
+export class WriteRejectedError extends Error {
+  readonly status: number;
+  readonly insufficientFunds: InsufficientFundsDetail | null;
+
+  constructor(args: {
+    message: string;
+    status: number;
+    insufficientFunds: InsufficientFundsDetail | null;
+  }) {
+    super(args.message);
+    this.name = "WriteRejectedError";
+    this.status = args.status;
+    this.insufficientFunds = args.insufficientFunds;
+  }
+}
+
+async function rejected(
+  res: Response,
+  fallback: string,
+): Promise<WriteRejectedError> {
+  const body: unknown = await res.json().catch(() => ({}));
+  const insufficientFunds = parseInsufficientFunds(body);
+  const detail = (body as { detail?: unknown }).detail;
+  return new WriteRejectedError({
+    message:
+      insufficientFunds?.message ??
+      (typeof detail === "string" ? detail : `${fallback} (${res.status})`),
+    status: res.status,
+    insufficientFunds,
+  });
+}
+
 export async function createTransaction(
   data: CreateTransactionRequest,
 ): Promise<void> {
@@ -79,10 +127,28 @@ export async function createTransaction(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail ?? `Failed to log transaction (${res.status})`);
-  }
+  if (!res.ok) throw await rejected(res, "Failed to log transaction");
+}
+
+/** A Deposit is a BUY of the CASH instrument and a Withdrawal a SELL of it
+ * (docs/domain-model.md) — the separate routes exist so the client never
+ * has to ask a user to pick an instrument called "USD". */
+export async function createDeposit(data: DepositRequest): Promise<void> {
+  const res = await fetch(`${resolveBase()}/transactions/deposit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw await rejected(res, "Failed to record deposit");
+}
+
+export async function createWithdrawal(data: DepositRequest): Promise<void> {
+  const res = await fetch(`${resolveBase()}/transactions/withdraw`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw await rejected(res, "Failed to record withdrawal");
 }
 
 export async function fetchPosition(

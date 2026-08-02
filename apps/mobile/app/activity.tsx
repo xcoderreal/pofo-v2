@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -7,7 +7,9 @@ import {
   View,
 } from "react-native";
 import { ActivityEmpty, ActivityList } from "@/components/ActivityList";
+import { EntryFab } from "@/components/EntryFab";
 import { ScopeChips } from "@/components/ScopeChips";
+import { TransactionSheet } from "@/components/TransactionSheet";
 import { UndoToast } from "@/components/UndoToast";
 import { useActivity } from "@/hooks/useActivity";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -39,6 +41,7 @@ export default function ActivityScreen() {
   const activity = useActivity();
   const instruments = useInstruments();
   const accounts = useAccounts();
+  const [entryOpen, setEntryOpen] = useState(false);
 
   const chips = useMemo(
     () =>
@@ -109,6 +112,11 @@ export default function ActivityScreen() {
         </ScrollView>
       )}
 
+      {/* Recording is reachable from here as well as from the Portfolio
+          tab: this feed is where you notice something missing, and the
+          scope it prefills from is the same shared one either way. */}
+      <EntryFab onPress={() => setEntryOpen(true)} />
+
       {view.toast === null ? null : (
         <UndoToast
           message={view.toast.message}
@@ -116,6 +124,10 @@ export default function ActivityScreen() {
           onDismiss={view.dismissToast}
         />
       )}
+
+      {entryOpen ? (
+        <TransactionSheet onClose={() => setEntryOpen(false)} />
+      ) : null}
     </View>
   );
 }

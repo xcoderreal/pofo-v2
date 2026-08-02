@@ -170,7 +170,33 @@ The smoke and e2e tiers spawn `uvicorn` as a subprocess via the `base_url` fixtu
 | Smoke / E2E (backend) | Sequential within tier | Shared uvicorn process with persistent in-memory state |
 | Web (Playwright) | Sequential (`workers: 1`) | Shared backend process; each test resets via REST API in `beforeEach` |
 
-The Playwright `workers: 1` setting is in `playwright.config.ts`. Each test file's `beforeEach` resets the backend state via DELETE + POST calls, giving each test a known baseline. Tests are **independent** (any can run alone) but **sequential** (to avoid racing on the shared backend).
+The Playwright `workers: 1` setting is in `playwright.config.ts`. Each test file's `beforeEach` re-establishes the baseline via the REST API (today: `POST /demo/seed`, which is idempotent). Tests are **independent** (any can run alone) but **sequential** (to avoid racing on the shared backend).
+
+### Reads before writes: the two Playwright projects
+
+There is no purge endpoint yet (that is #29), and the backend is one
+process with an in-memory repository for the whole run — so a spec that
+**records** a Transaction permanently changes the row counts and totals
+the read-only specs assert exactly (`Accounts · 4`, `20 transactions`,
+the Grid's matrix).
+
+`playwright.config.ts` therefore splits the tier into two projects:
+
+| Project | Contains | Runs |
+|---|---|---|
+| `chromium` | every spec except `transaction-entry.spec.ts` | first |
+| `chromium-writes` | `transaction-entry.spec.ts` | after, via `dependencies: ["chromium"]` |
+
+`dependencies` makes the ordering a declared fact rather than an
+alphabetical accident of the filenames. A writing spec should still keep
+its own blast radius small — `transaction-entry.spec.ts` records into
+accounts it creates itself, with a run-unique id, so its assertions never
+depend on what a previous run left behind.
+
+Note the interaction with `reuseExistingServer`: a stray `just api` on
+`:8090` survives between runs, so a *second* local run against it will see
+the first run's writes. Kill it (`lsof -ti tcp:8090 | xargs -r kill -9`)
+before `just verify`.
 
 <!-- TODO: frontend hook-level integration tests (renderHook + QueryClientProvider + mocked fetch) — add when hook count exceeds 10 and cache invalidation logic becomes complex -->
 

@@ -247,6 +247,16 @@
               }
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientFundsResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -455,6 +465,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientFundsResponse"
                 }
               }
             }
@@ -965,6 +985,64 @@
           "asset_class"
         ],
         "title": "InstrumentResponse"
+      },
+      "InsufficientFundsDetail": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "insufficient_cash",
+              "insufficient_shares"
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "instrument_id": {
+            "type": "string",
+            "title": "Instrument Id"
+          },
+          "requested": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Requested"
+          },
+          "available": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Available"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "account_id",
+          "instrument_id",
+          "requested",
+          "available"
+        ],
+        "title": "InsufficientFundsDetail",
+        "description": "Why a write was rejected with 409, in a shape a client can branch on.\n\n`code` is the whole point. Both variants are the same FIFO overdraw\n(docs/adr/0001-dashboard-v2.md \u00a7 4), but they need different words on\nscreen: an over-sell asks the user to sell fewer units, while a buy the\naccount cannot pay for asks them to record the funding Deposit that\nbelongs earlier in the ledger. A plain string `detail` forces the client\nto substring-match a sentence to tell those apart.\n\n`requested`/`available` come along so the client can state the shortfall\nexactly rather than re-deriving it from a `market_value` that was\ncomputed for today rather than for the transaction's own date."
+      },
+      "InsufficientFundsResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/InsufficientFundsDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "InsufficientFundsResponse",
+        "description": "The 409 body itself \u2014 FastAPI wraps every error in `detail`, and\ndocumenting the inner model alone would describe a payload this API\nnever sends."
       },
       "LedgerEntryResponse": {
         "properties": {

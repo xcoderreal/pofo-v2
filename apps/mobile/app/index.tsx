@@ -11,11 +11,13 @@ import {
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { AccountBreakdownList } from "@/components/AccountBreakdownList";
 import { DateRangeSheet } from "@/components/DateRangeSheet";
+import { EntryFab } from "@/components/EntryFab";
 import { InstrumentStatCard } from "@/components/InstrumentStatCard";
 import { OptionSheet, type SheetOption } from "@/components/OptionSheet";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { PositionsList } from "@/components/PositionsList";
 import { ScopeChips } from "@/components/ScopeChips";
+import { TransactionSheet } from "@/components/TransactionSheet";
 import { UndoToast } from "@/components/UndoToast";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useTheme } from "@/hooks/useTheme";
@@ -50,7 +52,7 @@ const PILL_RANGES = RANGE_KEYS;
 
 /** Which bottom sheet is open, if any. One slot: they are all modal, so
  * two at once is not a state worth representing. */
-type SheetKind = "metric" | "granularity" | "accounts" | "custom";
+type SheetKind = "metric" | "granularity" | "accounts" | "custom" | "entry";
 
 /**
  * The Flow toggle's two segments, as `[cumulative, label]`.
@@ -210,7 +212,12 @@ export default function PortfolioScreen() {
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   return (
-    <View style={styles.screen}>
+    // `portfolio-tab` is the whole screen; `portfolio-screen` below is its
+    // scroller. The distinction matters to the web tier: expo-router keeps
+    // visited tabs mounted and merely stacked, so "what is on this tab" is
+    // only answerable by scoping to its root — the same reason the Activity
+    // screen has one.
+    <View testID="portfolio-tab" style={styles.screen}>
       <ScrollView
         testID="portfolio-screen"
         style={styles.scroll}
@@ -454,6 +461,10 @@ export default function PortfolioScreen() {
         )}
       </ScrollView>
 
+      {/* Rendered before the sheets so an open sheet covers it — DOM order
+          is z-order on web, and everything here is one render tree. */}
+      <EntryFab onPress={() => setSheet("entry")} />
+
       {view.toast ? (
         <UndoToast
           message={view.toast.message}
@@ -499,6 +510,8 @@ export default function PortfolioScreen() {
           onApply={onApplyCustomRange}
           onClose={() => setSheet(null)}
         />
+      ) : sheet === "entry" ? (
+        <TransactionSheet onClose={() => setSheet(null)} />
       ) : null}
     </View>
   );

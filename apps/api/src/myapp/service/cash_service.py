@@ -26,10 +26,12 @@ already-existing "USD" instrument (created by a user under a different
 id via POST /instruments, however unlikely) silently coexist with a
 second CASH row instead of surfacing the conflict.
 
-Insufficient cash for a trade isn't a distinct concept — the paired CASH
+Insufficient cash for a trade isn't a distinct *check* — the paired CASH
 SELL goes through the identical FIFO overdraw check as selling too many
-shares of any other instrument, and raises the same InsufficientSharesError.
-Cash cannot go negative; there is no margin/negative-balance mode.
+shares of any other instrument. It is a distinct *diagnosis*, though, so
+log_trade re-labels an overdraw that landed on the cash leg as
+InsufficientCashError (a subclass, so nothing that catches the base class
+changes behaviour). Cash cannot go negative; there is no margin mode.
 
 Known gap: the get-then-create-if-missing check in _ensure_cash_instrument
 is not atomic. Two concurrent first-writes could both observe "not
@@ -46,6 +48,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from myapp.domain.model import AssetClass, Instrument, Transaction, TransactionType
+from myapp.domain.position import InsufficientSharesError
 from myapp.service.instrument_service import (
     DuplicateIdError,
     InstrumentService,
@@ -54,6 +57,51 @@ from myapp.service.transaction_service import TransactionService
 
 CASH_INSTRUMENT_ID = "cash"
 CASH_SYMBOL = "USD"
+
+
+class InsufficientCashError(InsufficientSharesError):
+    """The overdraw was on the CASH position — the account cannot pay for
+    this trade (or fund this withdrawal).
+
+    A *subclass*, because mechanically it is the very same FIFO overdraw
+    and nothing about the check is new (docs/adr/0001-dashboard-v2.md § 4)
+    — so every existing `except InsufficientSharesError` keeps working. But
+    a distinguishable one, because the remedy is not the same: an over-sell
+    is fixed by selling fewer units, while a trade rejected for cash is
+    fixed by recording the funding Deposit that belongs *before* it in the
+    ledger. That ordering requirement is the stated consequence of § 4, and
+    a caller that can only see one error type cannot point at it.
+
+    Raised only by `log_trade`, which is the one place that knows which of
+    the two legs it wrote is the cash side.
+    """
+
+    def __init__(
+        self, *, account_id: str, requested: Decimal, available: Decimal
+    ) -> None:
+        super().__init__(
+            account_id=account_id,
+            instrument_id=CASH_INSTRUMENT_ID,
+            requested=requested,
+            available=available,
+            message=(
+                f"Account {account_id!r} holds {available} in cash, "
+                f"but this needs {requested} — record the funding deposit "
+                f"before the transaction it pays for"
+            ),
+        )
+
+
+def _as_cash_error(exc: InsufficientSharesError) -> InsufficientSharesError:
+    """Re-label an overdraw that landed on the CASH position; pass anything
+    else through untouched."""
+    if exc.instrument_id != CASH_INSTRUMENT_ID:
+        return exc
+    return InsufficientCashError(
+        account_id=exc.account_id,
+        requested=exc.requested,
+        available=exc.available,
+    )
 
 
 @dataclass
@@ -141,7 +189,12 @@ class CashService:
         same-day trades of equal value."""
         self._ensure_cash_instrument()
         if transaction.instrument_id == CASH_INSTRUMENT_ID:
-            return self.transaction_service.log_transaction(transaction)
+            try:
+                return self.transaction_service.log_transaction(transaction)
+            except InsufficientSharesError as exc:
+                # A withdrawal larger than the balance. Same overdraw, and
+                # the same thing to say about it as a trade's cash leg.
+                raise _as_cash_error(exc) from exc
 
         primary = replace(transaction, trade_id=transaction.id)
         cash_leg = Transaction(
@@ -159,5 +212,11 @@ class CashService:
             timestamp=transaction.timestamp,
             trade_id=transaction.id,
         )
-        self.transaction_service.log_transactions([primary, cash_leg])
+        try:
+            self.transaction_service.log_transactions([primary, cash_leg])
+        except InsufficientSharesError as exc:
+            # Either leg can overdraw — the instrument leg on an over-sell,
+            # the cash leg on a buy the account can't pay for — and only
+            # the exception's own instrument says which.
+            raise _as_cash_error(exc) from exc
         return primary

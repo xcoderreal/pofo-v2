@@ -48,7 +48,41 @@ class LotOverdrawError(Exception):
 
 class InsufficientSharesError(Exception):
     """A sell transaction's quantity exceeds what's held (open, matching
-    lots) in that account for that instrument."""
+    lots) in that account for that instrument.
+
+    Carries the offending pair and the two quantities as fields, not only
+    inside a message. The same overdraw means two different things to a
+    caller depending on which instrument it fired on: on a trade's own leg
+    it is "you don't hold that many shares", and on the CASH leg that trade
+    auto-posts it is "you don't have that much money"
+    (docs/adr/0001-dashboard-v2.md § 4). Only the instrument tells those
+    apart, and a caller reduced to substring-matching the message cannot
+    say the right thing about either.
+
+    `message` is overridable so a subclass can phrase the same facts for
+    its own case without rewriting `args` after the fact.
+    """
+
+    def __init__(
+        self,
+        *,
+        account_id: str,
+        instrument_id: str,
+        requested: Decimal,
+        available: Decimal,
+        message: str | None = None,
+    ) -> None:
+        self.account_id = account_id
+        self.instrument_id = instrument_id
+        self.requested = requested
+        self.available = available
+        super().__init__(
+            message
+            or (
+                f"Cannot sell {requested} units of {instrument_id!r} "
+                f"in account {account_id!r} — only {available} available"
+            )
+        )
 
 
 @dataclass
@@ -182,10 +216,10 @@ def compute_lots(
 
         if remaining > 0:
             raise InsufficientSharesError(
-                f"Cannot sell {transaction.quantity} units of "
-                f"{transaction.instrument_id!r} in account "
-                f"{transaction.account_id!r} — "
-                f"only {transaction.quantity - remaining} available"
+                account_id=transaction.account_id,
+                instrument_id=transaction.instrument_id,
+                requested=transaction.quantity,
+                available=transaction.quantity - remaining,
             )
 
     return lots

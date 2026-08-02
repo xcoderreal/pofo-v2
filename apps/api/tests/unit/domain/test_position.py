@@ -109,6 +109,23 @@ class TestComputeLots:
         with pytest.raises(InsufficientSharesError):
             compute_lots([buy, sell])
 
+    def test_the_overdraw_error_carries_the_pair_and_both_quantities(self) -> None:
+        """Structured, not just a sentence: the caller has to tell an
+        over-sell from a cash overdraw on the leg a trade auto-posts, and
+        has to state the shortfall (docs/adr/0001-dashboard-v2.md § 4)."""
+        buy = _buy("t1", "acc1", "goog", "5", "100", days=0)
+        sell = _sell("t2", "acc1", "goog", "10", "200", days=1)
+
+        with pytest.raises(InsufficientSharesError) as excinfo:
+            compute_lots([buy, sell])
+
+        error = excinfo.value
+        assert error.account_id == "acc1"
+        assert error.instrument_id == "goog"
+        assert error.requested == Decimal("10")
+        assert error.available == Decimal("5")
+        assert "only 5 available" in str(error)
+
     def test_transactions_out_of_order_are_still_processed_chronologically(
         self,
     ) -> None:

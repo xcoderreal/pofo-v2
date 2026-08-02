@@ -275,9 +275,15 @@ export type CustomRangeResult =
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Real calendar day? `new Date("2026-02-31")` rolls into March rather
- * than failing, so the round-trip is the check. */
-function isRealDate(text: string): boolean {
+/**
+ * Real calendar day, written `YYYY-MM-DD`? `new Date("2026-02-31")` rolls
+ * into March rather than failing, so the round-trip is the check.
+ *
+ * Exported because the Custom range sheet and the transaction entry sheet
+ * both type their dates rather than pick them, for the same reason
+ * (`DateRangeSheet`), and "is 2026-02-31 a day" must not have two answers.
+ */
+export function isCalendarDate(text: string): boolean {
   if (!ISO_DATE.test(text)) return false;
   const parsed = new Date(`${text}T00:00:00Z`);
   return (
@@ -304,7 +310,7 @@ export function parseCustomRange(
   if (start === "" || end === "") {
     return { ok: false, reason: "Enter both dates as YYYY-MM-DD" };
   }
-  if (!isRealDate(start) || !isRealDate(end)) {
+  if (!isCalendarDate(start) || !isCalendarDate(end)) {
     return { ok: false, reason: "Dates must be real days, as YYYY-MM-DD" };
   }
   if (start > end) {

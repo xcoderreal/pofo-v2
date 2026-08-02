@@ -2,6 +2,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,7 +39,7 @@ from myapp.domain.repository import (
 )
 from myapp.service.account_service import AccountService
 from myapp.service.account_service import DuplicateIdError as AccountDuplicateIdError
-from myapp.service.cash_service import CashService
+from myapp.service.cash_service import CashService, InsufficientCashError
 from myapp.service.demo_seed_service import DemoSeedService
 from myapp.service.gains_service import GainsService
 from myapp.service.instrument_service import (
@@ -350,6 +351,55 @@ class PositionResponse(BaseModel):
     cost_basis: Decimal
 
 
+class InsufficientFundsDetail(BaseModel):
+    """Why a write was rejected with 409, in a shape a client can branch on.
+
+    `code` is the whole point. Both variants are the same FIFO overdraw
+    (docs/adr/0001-dashboard-v2.md § 4), but they need different words on
+    screen: an over-sell asks the user to sell fewer units, while a buy the
+    account cannot pay for asks them to record the funding Deposit that
+    belongs earlier in the ledger. A plain string `detail` forces the client
+    to substring-match a sentence to tell those apart.
+
+    `requested`/`available` come along so the client can state the shortfall
+    exactly rather than re-deriving it from a `market_value` that was
+    computed for today rather than for the transaction's own date.
+    """
+
+    code: Literal["insufficient_cash", "insufficient_shares"]
+    message: str
+    account_id: str
+    instrument_id: str
+    requested: Decimal
+    available: Decimal
+
+
+class InsufficientFundsResponse(BaseModel):
+    """The 409 body itself — FastAPI wraps every error in `detail`, and
+    documenting the inner model alone would describe a payload this API
+    never sends."""
+
+    detail: InsufficientFundsDetail
+
+
+def _insufficient_funds(exc: InsufficientSharesError) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail=InsufficientFundsDetail(
+            code=(
+                "insufficient_cash"
+                if isinstance(exc, InsufficientCashError)
+                else "insufficient_shares"
+            ),
+            message=str(exc),
+            account_id=exc.account_id,
+            instrument_id=exc.instrument_id,
+            requested=exc.requested,
+            available=exc.available,
+        ).model_dump(mode="json"),
+    )
+
+
 def _to_transaction_response(transaction: Transaction) -> TransactionResponse:
     return TransactionResponse(
         id=transaction.id,
@@ -371,7 +421,12 @@ def _to_transaction_response(transaction: Transaction) -> TransactionResponse:
 # leg (docs/domain-model.md; UBIQUITOUS_LANGUAGE.md's Cash Balance entry).
 
 
-@app.post("/transactions", response_model=TransactionResponse, status_code=201)
+@app.post(
+    "/transactions",
+    response_model=TransactionResponse,
+    status_code=201,
+    responses={409: {"model": InsufficientFundsResponse}},
+)
 def create_transaction(
     request: CreateTransactionRequest,
     current_user: User = Depends(get_current_user),
@@ -392,7 +447,9 @@ def create_transaction(
     except (AccountNotFoundError, InstrumentNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except InsufficientSharesError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # Covers InsufficientCashError too — the buy's auto-posted CASH leg
+        # overdrawing is the case #22's entry sheet has to name.
+        raise _insufficient_funds(exc) from exc
     return _to_transaction_response(transaction)
 
 
@@ -489,7 +546,12 @@ def seed_demo_portfolio(
     return DemoSeedResponse(seeded=service.ensure_seeded(current_user.id))
 
 
-@app.post("/transactions/withdraw", response_model=TransactionResponse, status_code=201)
+@app.post(
+    "/transactions/withdraw",
+    response_model=TransactionResponse,
+    status_code=201,
+    responses={409: {"model": InsufficientFundsResponse}},
+)
 def withdraw(
     request: WithdrawalRequest,
     current_user: User = Depends(get_current_user),
@@ -506,7 +568,7 @@ def withdraw(
     except AccountNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except InsufficientSharesError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise _insufficient_funds(exc) from exc
     return _to_transaction_response(transaction)
 
 

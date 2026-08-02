@@ -137,6 +137,10 @@ def test_withdraw_more_than_the_balance_returns_409(
         },
     )
     assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "insufficient_cash"
+    assert detail["requested"] == "200"
+    assert detail["available"] == "100"
 
 
 def test_deposit_against_nonexistent_account_returns_404(

@@ -12,7 +12,12 @@ from myapp.domain.model import (
     TransactionType,
 )
 from myapp.domain.position import InsufficientSharesError
-from myapp.service.cash_service import CASH_INSTRUMENT_ID, CASH_SYMBOL, CashService
+from myapp.service.cash_service import (
+    CASH_INSTRUMENT_ID,
+    CASH_SYMBOL,
+    CashService,
+    InsufficientCashError,
+)
 from myapp.service.instrument_service import DuplicateSymbolError, InstrumentService
 from myapp.service.transaction_service import TransactionService
 from tests.fake_repository import (
@@ -223,7 +228,7 @@ class TestWithdraw:
             timestamp=datetime(2026, 1, 1),
         )
 
-        with pytest.raises(InsufficientSharesError):
+        with pytest.raises(InsufficientCashError) as excinfo:
             service.withdraw(
                 id="t2",
                 user_id="user-a",
@@ -231,6 +236,11 @@ class TestWithdraw:
                 amount=Decimal("200"),
                 timestamp=datetime(2026, 1, 2),
             )
+
+        # An unpaired CASH SELL overdrawing is the same diagnosis as a
+        # trade's cash leg overdrawing, and gets the same error type.
+        assert excinfo.value.requested == Decimal("200")
+        assert excinfo.value.available == Decimal("100")
 
 
 class TestLogTrade:
@@ -401,9 +411,12 @@ class TestLogTrade:
         assert goog_balance.share_count == Decimal("6")  # 10 bought - 4 sold
 
     def test_buying_beyond_available_cash_is_rejected(self) -> None:
-        """Insufficient cash isn't a distinct concept — the paired CASH
-        SELL overdraws exactly like selling too many shares of any other
-        instrument, and raises the same error. No margin/negative-balance
+        """Insufficient cash isn't a distinct *check* — the paired CASH
+        SELL overdraws through exactly the same FIFO path as selling too
+        many shares. It is a distinct *diagnosis*: the error names cash, so
+        the caller can point at the funding Deposit that belongs earlier in
+        the ledger rather than at the quantity typed
+        (docs/adr/0001-dashboard-v2.md § 4). No margin/negative-balance
         mode."""
         instrument_repo = FakeInstrumentRepository(
             [
@@ -424,7 +437,7 @@ class TestLogTrade:
             timestamp=datetime(2026, 1, 1),
         )
 
-        with pytest.raises(InsufficientSharesError):
+        with pytest.raises(InsufficientCashError) as excinfo:
             service.log_trade(
                 Transaction(
                     id="t2",
@@ -438,12 +451,74 @@ class TestLogTrade:
                 )
             )
 
+        error = excinfo.value
+        # Still an InsufficientSharesError, so nothing that catches the
+        # base class changes behaviour.
+        assert isinstance(error, InsufficientSharesError)
+        assert error.instrument_id == CASH_INSTRUMENT_ID
+        assert error.requested == Decimal("500")
+        assert error.available == Decimal("100")
+        assert "cash" in str(error)
+
         # Atomic — the GOOG leg must not have been persisted either.
         goog_balance = service.transaction_service.get_position(
             "acc1", "goog", user_id="user-a"
         )
         assert goog_balance is not None
         assert goog_balance.share_count == Decimal("0")
+
+    def test_over_selling_shares_is_not_reported_as_a_cash_problem(self) -> None:
+        """The other half of the same rule: an overdraw on the *instrument*
+        leg is fixed by selling fewer units, and telling the user to record
+        a deposit would send them after the wrong thing."""
+        instrument_repo = FakeInstrumentRepository(
+            [
+                Instrument(
+                    id="goog",
+                    symbol="GOOG",
+                    name="Alphabet",
+                    asset_class=AssetClass.EQUITY,
+                )
+            ]
+        )
+        service = _cash_service(instrument_repo)
+        service.deposit(
+            id="t1",
+            user_id="user-a",
+            account_id="acc1",
+            amount=Decimal("10000"),
+            timestamp=datetime(2026, 1, 1),
+        )
+        service.log_trade(
+            Transaction(
+                id="t2",
+                user_id="user-a",
+                account_id="acc1",
+                instrument_id="goog",
+                type=TransactionType.BUY,
+                quantity=Decimal("5"),
+                price=Decimal("100"),
+                timestamp=datetime(2026, 1, 2),
+            )
+        )
+
+        with pytest.raises(InsufficientSharesError) as excinfo:
+            service.log_trade(
+                Transaction(
+                    id="t3",
+                    user_id="user-a",
+                    account_id="acc1",
+                    instrument_id="goog",
+                    type=TransactionType.SELL,
+                    quantity=Decimal("9"),
+                    price=Decimal("120"),
+                    timestamp=datetime(2026, 1, 3),
+                )
+            )
+
+        assert not isinstance(excinfo.value, InsufficientCashError)
+        assert excinfo.value.instrument_id == "goog"
+        assert excinfo.value.available == Decimal("5")
 
     def test_a_cash_instrument_transaction_passes_through_unpaired(self) -> None:
         """Logging a CASH transaction directly via log_trade (as

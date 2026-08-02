@@ -123,6 +123,40 @@ def test_selling_more_than_held_returns_409(
     )
 
     assert resp.status_code == 409
+    assert resp.json()["detail"] == {
+        "code": "insufficient_shares",
+        "message": (
+            "Cannot sell 10 units of 'goog' in account 'acc1' — only 5 available"
+        ),
+        "account_id": "acc1",
+        "instrument_id": "goog",
+        "requested": "10",
+        "available": "5",
+    }
+
+
+def test_buying_beyond_available_cash_returns_409_naming_cash(
+    transaction_repo: FakeTransactionRepository,
+):
+    """The path #22's entry sheet exists to explain. The 409 has to be
+    distinguishable from an over-sell without substring-matching a
+    sentence, because only one of the two is fixed by recording a Deposit
+    first (docs/adr/0001-dashboard-v2.md § 4)."""
+    client = _client_as("user-a", transaction_repo)
+    _deposit(client, amount="400")  # the buy below costs 1,000
+
+    resp = client.post("/transactions", json=_buy_payload())
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "insufficient_cash"
+    assert detail["instrument_id"] == "cash"
+    assert detail["requested"] == "1000"
+    assert detail["available"] == "400"
+    assert "deposit" in detail["message"]
+    # Rejected whole: neither leg was written.
+    position = client.get("/accounts/acc1/instruments/goog/position")
+    assert position.json()["share_count"] == "0"
 
 
 def test_transaction_against_nonexistent_account_returns_404(

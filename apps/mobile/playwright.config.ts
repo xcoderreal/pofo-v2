@@ -23,10 +23,32 @@ export default defineConfig({
     trace: "on-first-retry",
   },
 
+  /**
+   * Two projects, split by whether the tests write.
+   *
+   * The backend is one process with a singleton in-memory repository for
+   * the whole run, and there is no purge endpoint yet (that is #29) — so a
+   * spec that records a Transaction permanently changes the row counts and
+   * totals the read-only specs assert exactly ("Accounts · 4", "20
+   * transactions", the Grid's matrix). `dependencies` makes "reads first,
+   * then writes" a declared fact rather than an alphabetical accident of
+   * the filenames.
+   *
+   * `writes` still keeps its own blast radius small: it records into
+   * accounts it creates itself, so its assertions never depend on what a
+   * previous run left behind.
+   */
   projects: [
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      testIgnore: /transaction-entry\.spec\.ts/,
+    },
+    {
+      name: "chromium-writes",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: /transaction-entry\.spec\.ts/,
+      dependencies: ["chromium"],
     },
   ],
 

@@ -349,6 +349,47 @@ export interface components {
             asset_class: components["schemas"]["AssetClass"];
         };
         /**
+         * InsufficientFundsDetail
+         * @description Why a write was rejected with 409, in a shape a client can branch on.
+         *
+         *     `code` is the whole point. Both variants are the same FIFO overdraw
+         *     (docs/adr/0001-dashboard-v2.md § 4), but they need different words on
+         *     screen: an over-sell asks the user to sell fewer units, while a buy the
+         *     account cannot pay for asks them to record the funding Deposit that
+         *     belongs earlier in the ledger. A plain string `detail` forces the client
+         *     to substring-match a sentence to tell those apart.
+         *
+         *     `requested`/`available` come along so the client can state the shortfall
+         *     exactly rather than re-deriving it from a `market_value` that was
+         *     computed for today rather than for the transaction's own date.
+         */
+        InsufficientFundsDetail: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "insufficient_cash" | "insufficient_shares";
+            /** Message */
+            message: string;
+            /** Account Id */
+            account_id: string;
+            /** Instrument Id */
+            instrument_id: string;
+            /** Requested */
+            requested: string;
+            /** Available */
+            available: string;
+        };
+        /**
+         * InsufficientFundsResponse
+         * @description The 409 body itself — FastAPI wraps every error in `detail`, and
+         *     documenting the inner model alone would describe a payload this API
+         *     never sends.
+         */
+        InsufficientFundsResponse: {
+            detail: components["schemas"]["InsufficientFundsDetail"];
+        };
+        /**
          * LedgerEntryResponse
          * @description A TransactionResponse plus the gain that sell booked.
          *
@@ -753,6 +794,15 @@ export interface operations {
                     "application/json": components["schemas"]["TransactionResponse"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsufficientFundsResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -869,6 +919,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsufficientFundsResponse"];
                 };
             };
             /** @description Validation Error */
