@@ -222,3 +222,17 @@ See `scripts/init-project.py` for what exactly gets renamed. Then edit `README.m
 - [`docs/non-goals.md`](docs/non-goals.md) — explicitly deferred features and why
 - [`CONTEXT.md`](CONTEXT.md) / [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — product context and domain glossary
 - [`engineering-principles.md`](engineering-principles.md) — durable engineering taste decisions
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues, via the `gh` CLI. See [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Default vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context — `CONTEXT.md` + `UBIQUITOUS_LANGUAGE.md` at the repo root, `docs/adr/` created lazily. See [`docs/agents/domain.md`](docs/agents/domain.md).
