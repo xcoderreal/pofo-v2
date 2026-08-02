@@ -33,3 +33,7 @@ Explicit parking lot from the design session. Each entry exists so a future sess
 ## Multi-user / shared portfolios
 
 **Why deferred:** single-user app (`CONTEXT.md`). Real auth exists because this is real financial data on a public URL, not because there's more than one user. `user_id` + RLS are modeled from day one specifically so this *would* be a small extension later, not a redesign — but sharing/multi-tenant UX itself is unbuilt.
+
+## Caching computed Position/Lot/gains
+
+**Why deferred:** `Position`/`Lot`/gains are "computed, never stored" by design (`docs/domain-model.md`) — every read, and (since trades auto-post a cash leg) every write's FIFO validation, recomputes fresh via `compute_lots` over an `(account, instrument)`'s full transaction history. At this app's single-user scale that's sub-millisecond — sorting and walking a few hundred/thousand `Decimal` rows — so caching would add real complexity (invalidation, staleness) against no measured problem. **Revisit if:** an account's transaction count grows large enough (years of high-frequency activity) that recomputation becomes measurably slow. The natural fix at that point is a checkpoint/snapshot — cache a `Position` as of a past date and replay only the transactions after it — not a redesign of "computed, never stored" itself.
