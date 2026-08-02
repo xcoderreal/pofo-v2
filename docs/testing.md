@@ -27,6 +27,18 @@ or `console.error` during render. It's the floor for runtime UI
 validation. See also [`philosophy.md`](philosophy.md) for the MCP vs test
 tier distinction.
 
+### A sixth, opt-in tier: RLS enforcement proof
+
+`apps/api/tests/rls/` (`just test-rls`) answers a question none of the five
+tiers above can: "does a Row Level Security policy actually deny cross-user
+access?" It talks to PostgREST directly against a dedicated *test* Supabase
+project with two real fixture users' JWTs — never through the FastAPI app,
+since the app's `stub` auth path uses the service-role key and structurally
+bypasses RLS. Requires `MYAPP_SUPABASE_TEST_URL`/`_ANON_KEY`/`_SERVICE_KEY`;
+skips cleanly when absent, so it's deliberately **not** part of `just
+verify` — opt in once a test project is provisioned. See `docs/security.md`'s
+RLS checklist.
+
 ## Which tier does a new test belong in?
 
 ```
@@ -71,6 +83,9 @@ just test-mobile-unit             # ~80ms
 # Against an externally-managed URL (your own `just api`, staging, prod)
 just test-smoke url=http://127.0.0.1:8090
 just test-e2e url=https://staging.example.com
+
+# RLS enforcement proof — opt-in, requires a dedicated test Supabase project
+just test-rls                     # skips cleanly if MYAPP_SUPABASE_TEST_* unset
 
 # Everything (full CI equivalent)
 just test                         # unit + integration + e2e + mobile typecheck + mobile-unit

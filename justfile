@@ -49,6 +49,16 @@ test-mobile-unit:
 test-web-local:
     cd apps/mobile && bunx playwright test
 
+# `test-rls` = the RLS enforcement proof tier (docs/security.md). Talks
+# to PostgREST directly against a dedicated *test* Supabase project with
+# two real fixture users' JWTs — the only seam that can prove an RLS
+# policy actually works, since the app's stub-auth path bypasses RLS via
+# the service-role key. Requires MYAPP_SUPABASE_TEST_URL/ANON_KEY/
+# SERVICE_KEY; skips cleanly when absent, so it's NOT part of `just
+# verify` — opt in explicitly once a test project is provisioned.
+test-rls:
+    cd apps/api && uv run pytest tests/rls/ -v
+
 # ─── Formatting & linting (repo-wide + per-app) ───────────────
 # `just check` = read-only (CI); `just fmt` = write (local).
 check: lint fmt-check

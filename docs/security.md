@@ -9,13 +9,13 @@ This app holds real account balances and holdings on a (planned) public deployme
 ## RLS checklist
 
 - [ ] Every table holding user data has a `user_id` column and an RLS policy landing in the *same* migration that creates the table — never a follow-up.
-- [ ] RLS policies use `auth.uid() = user_id`, verified against real fixture JWTs (two distinct test users) in a dedicated test tier that talks to PostgREST directly — **not** only exercised through the app (the app's own dev-loop convenience mode, `stub`, uses the service-role key and bypasses RLS, so it can never be the thing that proves a policy works).
+- [x] RLS policies use `auth.uid() = user_id`, verified against real fixture JWTs (two distinct test users) in a dedicated test tier that talks to PostgREST directly — **not** only exercised through the app (the app's own dev-loop convenience mode, `stub`, uses the service-role key and bypasses RLS, so it can never be the thing that proves a policy works). Implemented at `apps/api/tests/rls/` (`just test-rls`); requires `MYAPP_SUPABASE_TEST_URL`/`MYAPP_SUPABASE_TEST_ANON_KEY`/`MYAPP_SUPABASE_TEST_SERVICE_KEY` against a dedicated test Supabase project, skips cleanly when absent, deliberately excluded from `just verify`.
 - [ ] The backend's Supabase Secret API key (service-role, RLS-bypassing) is used **only** for backend-owned operations (repository writes on behalf of an authenticated `user_id` already verified by the app layer) — never exposed to the frontend, never used to serve a request without an already-verified `user_id`.
 - [ ] `MYAPP_AUTH=stub` is hard-rejected at startup when `MYAPP_ENV=production` (see `docs/auth.md`).
 
 ## Access control
 
-- [ ] Production requires `MYAPP_AUTH=supabase` with real JWT verification against Supabase's JWKS. `alg` is checked explicitly; `alg: none` is never accepted.
+- [ ] Production requires `MYAPP_AUTH=supabase` with real JWT verification (HS256 + the project's shared secret — see `docs/auth.md`). `alg` is checked explicitly; `alg: none` is never accepted.
 - [ ] Cross-user reads return 404, not 403 (don't leak resource existence — see `docs/auth.md`).
 - [ ] Token storage: `httpOnly` cookie on web, `expo-secure-store` on iOS — not `localStorage` (see `docs/auth.md`).
 - [ ] `MYAPP_CORS_ORIGINS` is the actual deployed frontend origin(s) in production — never `["*"]`.
