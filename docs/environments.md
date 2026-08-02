@@ -58,12 +58,15 @@ MYAPP_AUTH=stub
 # "supabase" persists through a real Supabase project (see below).
 MYAPP_REPOSITORY=memory
 
-# Required when MYAPP_REPOSITORY=supabase.
+# Required when MYAPP_AUTH=supabase. Also required when
+# MYAPP_REPOSITORY=supabase (same var, not a second URL) once that
+# adapter exists. Used to discover the JWKS endpoint for JWT
+# verification — no shared secret, Supabase signs session tokens
+# asymmetrically (docs/auth.md).
 MYAPP_SUPABASE_URL=
-MYAPP_SUPABASE_KEY=          # Secret API key (sb_secret_...), backend-only, never sent as Bearer auth
 
-# Required when MYAPP_AUTH=supabase.
-MYAPP_SUPABASE_JWT_SECRET=   # verifies Supabase-issued JWTs
+# Required when MYAPP_REPOSITORY=supabase.
+MYAPP_SUPABASE_KEY=          # Secret API key (sb_secret_...), backend-only, never sent as Bearer auth
 ```
 
 ## Migrations

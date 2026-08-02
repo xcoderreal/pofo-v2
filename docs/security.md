@@ -15,12 +15,12 @@ This app holds real account balances and holdings on a (planned) public deployme
 
 ## Access control
 
-- [ ] Production requires `MYAPP_AUTH=supabase` with real JWT verification (HS256 + the project's shared secret — see `docs/auth.md`). `alg` is checked explicitly; `alg: none` is never accepted.
+- [ ] Production requires `MYAPP_AUTH=supabase` with real JWT verification (ES256, against the project's public key fetched from its JWKS endpoint — see `docs/auth.md`). `alg` is checked explicitly; `alg: none` is never accepted.
 - [ ] Cross-user reads return 404, not 403 (don't leak resource existence — see `docs/auth.md`).
 - [ ] Token storage: `httpOnly` cookie on web, `expo-secure-store` on iOS — not `localStorage` (see `docs/auth.md`).
 - [ ] `MYAPP_CORS_ORIGINS` is the actual deployed frontend origin(s) in production — never `["*"]`.
 - [ ] All auth-relevant endpoints served over HTTPS in production (Vercel default).
-- [ ] Secrets (`MYAPP_SUPABASE_KEY`, `MYAPP_SUPABASE_JWT_SECRET`, `MYAPP_SECRET_KEY`) are never committed, never the skeleton's default placeholder values in production.
+- [ ] Secrets (`MYAPP_SUPABASE_KEY`, `MYAPP_SECRET_KEY`) are never committed, never the skeleton's default placeholder values in production. `MYAPP_SUPABASE_URL` is not a secret (it's the JWKS-discovery URL, public by design) but still shouldn't be a copy-pasted placeholder.
 
 ## Dev-user convenience vs. production posture — kept structurally separate
 

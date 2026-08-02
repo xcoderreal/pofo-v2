@@ -166,7 +166,7 @@ def test_requires_auth(transaction_repo: FakeTransactionRepository) -> None:
     client = _client_as("user-a", transaction_repo)
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides[get_auth_provider] = lambda: SupabaseAuthProvider(
-        jwt_secret="test-jwt-secret-at-least-32-characters-long"
+        project_url="https://test.supabase.co"
     )
 
     resp = client.get(

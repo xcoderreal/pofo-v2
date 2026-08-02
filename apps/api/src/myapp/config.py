@@ -16,8 +16,11 @@ class Settings(BaseSettings):
     # CI, never for production. "supabase" verifies a real Supabase JWT.
     auth: Literal["stub", "supabase"] = "stub"
 
-    # Required when auth="supabase". Verifies Supabase-issued JWTs.
-    supabase_jwt_secret: str | None = None
+    # Required when auth="supabase". The project URL, used to discover
+    # its JWKS endpoint (.well-known/jwks.json) for JWT verification —
+    # no shared secret needed, Supabase signs session tokens
+    # asymmetrically (see adapters/supabase_auth_provider.py).
+    supabase_url: str | None = None
 
     # NOTE: MYAPP_REPOSITORY (memory|supabase) + MYAPP_SUPABASE_URL/KEY are
     # deliberately not added here yet — nothing in this codebase constructs

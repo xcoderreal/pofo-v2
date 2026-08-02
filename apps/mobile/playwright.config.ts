@@ -40,6 +40,11 @@ export default defineConfig({
       url: "http://127.0.0.1:8090/health",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
+      // Explicit — a developer's local .env.local (e.g. MYAPP_AUTH=supabase,
+      // set for manual testing per docs/environments.md) would otherwise
+      // silently break every web test's seed requests with 401s. Real env
+      // vars outrank .env/.env.local in pydantic-settings' precedence.
+      env: { MYAPP_AUTH: "stub" },
     },
     // Frontend — export the web bundle and serve dist/ on a fixed port.
     // `npx expo export` (not bunx) because Metro doesn't exit cleanly under bun.

@@ -59,11 +59,11 @@ from myapp.service.transaction_service import (
 
 def _build_auth_provider(settings: Settings) -> AuthProvider:
     if settings.auth == "supabase":
-        if not settings.supabase_jwt_secret:
+        if not settings.supabase_url:
             raise RuntimeError(
-                "MYAPP_SUPABASE_JWT_SECRET is required when MYAPP_AUTH=supabase"
+                "MYAPP_SUPABASE_URL is required when MYAPP_AUTH=supabase"
             )
-        return SupabaseAuthProvider(jwt_secret=settings.supabase_jwt_secret)
+        return SupabaseAuthProvider(project_url=settings.supabase_url)
     return StubAuthProvider()
 
 

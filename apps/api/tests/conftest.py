@@ -63,6 +63,15 @@ def base_url() -> Iterator[str]:
 
     port = _find_free_port()
     url = f"http://127.0.0.1:{port}"
+    # Explicit MYAPP_AUTH=stub so this spawned process's own Settings()
+    # can't be silently overridden by a developer's local .env.local
+    # (e.g. MYAPP_AUTH=supabase, set for manual testing per
+    # docs/environments.md) — real env vars outrank .env/.env.local in
+    # pydantic-settings' precedence, so this wins regardless of what's
+    # on disk. Without it, this fixture's behavior depends on a
+    # gitignored file nobody else can see, exactly the fragility that
+    # motivated adding this.
+    env = {**os.environ, "MYAPP_AUTH": "stub"}
     proc = subprocess.Popen(
         [
             "uv",
@@ -76,6 +85,7 @@ def base_url() -> Iterator[str]:
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=env,
     )
     try:
         _wait_for_health(url)

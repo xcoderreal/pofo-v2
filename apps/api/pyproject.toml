@@ -8,7 +8,7 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
-    "pyjwt>=2.10",
+    "pyjwt[crypto]>=2.10",
     "yfinance>=0.2",
 ]
 

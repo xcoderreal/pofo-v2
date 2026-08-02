@@ -34,7 +34,6 @@ MYAPP_REPOSITORY=supabase
 MYAPP_SUPABASE_URL=https://<prod-project-ref>.supabase.co
 MYAPP_SUPABASE_KEY=<prod Secret API key, sb_secret_...>
 MYAPP_AUTH=supabase
-MYAPP_SUPABASE_JWT_SECRET=<from Project Settings → API → JWT Secret>
 MYAPP_CORS_ORIGINS=https://<production frontend URL>
 ```
 
