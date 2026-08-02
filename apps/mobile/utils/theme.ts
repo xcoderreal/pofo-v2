@@ -33,4 +33,38 @@ export const lightTheme = {
   },
 };
 
+/**
+ * The dashboard's palette. Dark is the design's native mode — the chart,
+ * the accent-on-near-black value treatment and the muted chrome are all
+ * built around it (docs/design/dashboard_v2). `lightTheme` is kept
+ * because the scaffold screens still reference it and a future
+ * ThemeProvider swap is a stated goal (CLAUDE.md).
+ */
+export const darkTheme: Theme = {
+  colors: {
+    background: "#0A0B0D",
+    surface: "#12151A",
+    text: "#F2F4F7",
+    textSecondary: "#8A9099",
+    textTertiary: "#6C737D",
+    placeholder: "#5A616B",
+    primary: "#7EE2A8",
+    primaryText: "#0A0B0D",
+    border: "#232830",
+    borderLight: "#1A1E24",
+    danger: "#E8705F",
+  },
+  spacing: lightTheme.spacing,
+  fontSize: lightTheme.fontSize,
+  borderRadius: lightTheme.borderRadius,
+};
+
+/** Semantic colours for gain/loss, which are not part of the neutral
+ * palette — they carry meaning, so they are named for it. */
+export const signalColors = {
+  up: "#7EE2A8",
+  down: "#E8705F",
+  flat: "#8A9099",
+};
+
 export type Theme = typeof lightTheme;

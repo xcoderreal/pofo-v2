@@ -97,3 +97,55 @@ export async function fetchPosition(
   }
   return res.json();
 }
+
+// ─── Portfolio time series ──────────────────────────────────
+
+export type Series = components["schemas"]["SeriesResponse"];
+export type Metric = components["schemas"]["Metric"];
+export type Mode = components["schemas"]["Mode"];
+export type GroupBy = components["schemas"]["GroupBy"];
+
+export interface TimeSeriesQuery {
+  metric: Metric;
+  start: string;
+  end: string;
+  granularity: string;
+  mode: Mode;
+  groupBy?: GroupBy;
+  /** Repeated query params, matching FastAPI's native list support —
+   * not a comma-joined convention (docs/domain-model.md). */
+  instruments?: string[];
+  accounts?: string[];
+}
+
+export async function fetchTimeSeries(query: TimeSeriesQuery): Promise<Series[]> {
+  const params = new URLSearchParams({
+    metric: query.metric,
+    start: query.start,
+    end: query.end,
+    granularity: query.granularity,
+    mode: query.mode,
+    group_by: query.groupBy ?? "none",
+  });
+  for (const id of query.instruments ?? []) params.append("instruments", id);
+  for (const id of query.accounts ?? []) params.append("accounts", id);
+
+  const res = await fetch(`${resolveBase()}/portfolio/query?${params}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Failed to fetch time series (${res.status})`);
+  }
+  return res.json();
+}
+
+// ─── Demo seed ──────────────────────────────────────────────
+
+/** Idempotent — a user who already owns an Account is left alone, so
+ * this is safe to call on every launch. */
+export async function seedDemoPortfolio(): Promise<{ seeded: boolean }> {
+  const res = await fetch(`${resolveBase()}/demo/seed`, { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`Failed to seed demo portfolio (${res.status})`);
+  }
+  return res.json();
+}
