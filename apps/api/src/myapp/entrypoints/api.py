@@ -40,10 +40,12 @@ from myapp.service.account_service import AccountService
 from myapp.service.account_service import DuplicateIdError as AccountDuplicateIdError
 from myapp.service.cash_service import CashService
 from myapp.service.demo_seed_service import DemoSeedService
+from myapp.service.gains_service import GainsService
 from myapp.service.instrument_service import (
     DuplicateIdError as InstrumentDuplicateIdError,
 )
 from myapp.service.instrument_service import DuplicateSymbolError, InstrumentService
+from myapp.service.positions_service import PositionsService
 from myapp.service.price_service import PriceService
 from myapp.service.query_service import (
     AccountsNotApplicableError,
@@ -608,6 +610,85 @@ def query_portfolio(
             ],
         )
         for s in series
+    ]
+
+
+# ─── Positions dependencies ───────────────────────────────────
+
+
+def get_gains_service(
+    transaction_service: TransactionService = Depends(get_transaction_service),
+    price_service: PriceService = Depends(get_price_service),
+) -> GainsService:
+    return GainsService(
+        transaction_service=transaction_service, price_service=price_service
+    )
+
+
+def get_positions_service(
+    account_service: AccountService = Depends(get_account_service),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
+    transaction_service: TransactionService = Depends(get_transaction_service),
+    gains_service: GainsService = Depends(get_gains_service),
+    price_service: PriceService = Depends(get_price_service),
+) -> PositionsService:
+    return PositionsService(
+        account_service=account_service,
+        instrument_service=instrument_service,
+        transaction_service=transaction_service,
+        gains_service=gains_service,
+        price_service=price_service,
+    )
+
+
+# ─── Positions schemas ────────────────────────────────────────
+
+
+class PositionRowResponse(BaseModel):
+    account_id: str
+    instrument_id: str
+    share_count: Decimal
+    cost_basis: Decimal
+    average_cost: Decimal | None
+    market_value: Decimal | None
+    realized_gain: Decimal
+    unrealized_gain: Decimal | None
+
+
+# ─── Positions routes ─────────────────────────────────────────
+# The batched counterpart to the single-pair position endpoint above:
+# every computed Position across a scope of accounts and/or instruments in
+# one call (docs/adr/0001-dashboard-v2.md § 5). The client pivots these
+# rows into the Holdings list, the Accounts list, the instrument stat card
+# and the Grid matrix, so the time-series query never needs a
+# two-dimensional group-by. Scope params follow /portfolio/query's
+# convention: repeated values, with "all" or omission meaning no filter.
+# CASH rows are included — the Accounts list needs them; hiding CASH from
+# Holdings is a client concern.
+
+
+@app.get("/portfolio/positions", response_model=list[PositionRowResponse])
+def list_positions(
+    instruments: list[str] | None = Query(default=None),
+    accounts: list[str] | None = Query(default=None),
+    current_user: User = Depends(get_current_user),
+    service: PositionsService = Depends(get_positions_service),
+):
+    rows = service.list_positions(
+        user_id=current_user.id, accounts=accounts, instruments=instruments
+    )
+    return [
+        PositionRowResponse(
+            account_id=row.account_id,
+            instrument_id=row.instrument_id,
+            share_count=row.share_count,
+            cost_basis=row.cost_basis,
+            average_cost=row.average_cost,
+            market_value=row.market_value,
+            realized_gain=row.realized_gain,
+            unrealized_gain=row.unrealized_gain,
+        )
+        for row in rows
     ]
 
 

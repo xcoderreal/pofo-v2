@@ -138,6 +138,36 @@ export async function fetchTimeSeries(query: TimeSeriesQuery): Promise<Series[]>
   return res.json();
 }
 
+// ─── Batched positions ──────────────────────────────────────
+
+export type PositionRow = components["schemas"]["PositionRowResponse"];
+
+export interface PositionsQuery {
+  /** Repeated query params, same convention as the time-series query.
+   * Omitting a dimension means "no filter" on it. */
+  instruments?: string[];
+  accounts?: string[];
+}
+
+/** Every computed Position across a scope in one call. The client pivots
+ * these rows into the Holdings list, the Accounts list and (from #20) the
+ * Grid matrix — see docs/adr/0001-dashboard-v2.md § 5. */
+export async function fetchPositions(
+  query: PositionsQuery = {},
+): Promise<PositionRow[]> {
+  const params = new URLSearchParams();
+  for (const id of query.instruments ?? []) params.append("instruments", id);
+  for (const id of query.accounts ?? []) params.append("accounts", id);
+
+  const suffix = params.toString() ? `?${params}` : "";
+  const res = await fetch(`${resolveBase()}/portfolio/positions${suffix}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Failed to fetch positions (${res.status})`);
+  }
+  return res.json();
+}
+
 // ─── Demo seed ──────────────────────────────────────────────
 
 /** Idempotent — a user who already owns an Account is left alone, so

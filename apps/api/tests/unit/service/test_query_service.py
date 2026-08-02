@@ -464,6 +464,95 @@ class TestCompositeMetrics:
         assert values[D(2026, 1, 5)] == Decimal("200")  # 1200 equity - 1000 basis
 
 
+class TestRangeStartOnANonTradingDay:
+    """A range very often starts on a weekend or a holiday. Without a
+    backward lookback the first boundary has no bar and is dropped, so
+    every range-scoped comparison silently measures from the first
+    trading day instead of from the range start — which is what the
+    Holdings/Accounts row percentages are defined against (#16)."""
+
+    def test_the_first_boundary_uses_the_last_close_before_it(self) -> None:
+        # Jan 3 2026 is a Saturday; the last close is Jan 2.
+        transactions = [_buy("t1", "acc1", "goog", "10", "100", (2025, 12, 1))]
+        source = FakePriceSource(
+            {
+                "GOOG": [
+                    PriceBar(date=D(2026, 1, 2), close=Decimal("120")),
+                    PriceBar(date=D(2026, 1, 5), close=Decimal("130")),
+                ]
+            }
+        )
+        service = _service(transactions=transactions, price_source=source)
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.EQUITY,
+            instruments=["goog"],
+            accounts=["acc1"],
+            group_by=GroupBy.NONE,
+            start=D(2026, 1, 3),
+            end=D(2026, 1, 10),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        values = {p.timestamp: p.value for p in result[0].points}
+        assert values[D(2026, 1, 3)] == Decimal("1200")  # 10 * Jan 2's close
+
+    def test_an_interior_gap_is_still_never_padded(self) -> None:
+        """The lookback only ever feeds the first boundary — every
+        interior boundary's candidate window is bounded below by the
+        previous one, so a real mid-range gap stays sparse."""
+        transactions = [_buy("t1", "acc1", "goog", "10", "100", (2025, 12, 1))]
+        source = FakePriceSource(
+            {"GOOG": [PriceBar(date=D(2026, 1, 2), close=Decimal("120"))]}
+        )
+        service = _service(transactions=transactions, price_source=source)
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.EQUITY,
+            instruments=["goog"],
+            accounts=["acc1"],
+            group_by=GroupBy.NONE,
+            start=D(2026, 1, 3),
+            end=D(2026, 1, 6),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        assert [p.timestamp for p in result[0].points] == [D(2026, 1, 3)]
+
+    def test_a_position_opened_after_the_range_start_still_starts_late(self) -> None:
+        """The lookback must not resurrect a position that didn't exist
+        yet — that distinction is what renders a dash rather than a
+        fabricated percentage in the Holdings list."""
+        transactions = [_buy("t1", "acc1", "goog", "10", "100", (2026, 1, 5))]
+        source = FakePriceSource(
+            {
+                "GOOG": [
+                    PriceBar(date=D(2026, 1, 2), close=Decimal("120")),
+                    PriceBar(date=D(2026, 1, 5), close=Decimal("130")),
+                ]
+            }
+        )
+        service = _service(transactions=transactions, price_source=source)
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.EQUITY,
+            instruments=["goog"],
+            accounts=["acc1"],
+            group_by=GroupBy.NONE,
+            start=D(2026, 1, 3),
+            end=D(2026, 1, 10),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        assert [p.timestamp for p in result[0].points] == [D(2026, 1, 5)]
+
+
 class TestCashBalance:
     def test_always_targets_cash_when_instruments_is_omitted_or_all(self) -> None:
         transactions = [

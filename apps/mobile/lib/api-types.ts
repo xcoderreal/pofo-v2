@@ -193,6 +193,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/portfolio/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Positions */
+        get: operations["list_positions_portfolio_positions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -333,6 +350,25 @@ export interface components {
             share_count: string;
             /** Cost Basis */
             cost_basis: string;
+        };
+        /** PositionRowResponse */
+        PositionRowResponse: {
+            /** Account Id */
+            account_id: string;
+            /** Instrument Id */
+            instrument_id: string;
+            /** Share Count */
+            share_count: string;
+            /** Cost Basis */
+            cost_basis: string;
+            /** Average Cost */
+            average_cost: string | null;
+            /** Market Value */
+            market_value: string | null;
+            /** Realized Gain */
+            realized_gain: string;
+            /** Unrealized Gain */
+            unrealized_gain: string | null;
         };
         /** SeriesResponse */
         SeriesResponse: {
@@ -777,6 +813,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SeriesResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_positions_portfolio_positions_get: {
+        parameters: {
+            query?: {
+                instruments?: string[] | null;
+                accounts?: string[] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PositionRowResponse"][];
                 };
             };
             /** @description Validation Error */

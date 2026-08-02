@@ -10,9 +10,21 @@ import {
 } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { PortfolioChart } from "@/components/PortfolioChart";
+import { PositionsList, type ListTab } from "@/components/PositionsList";
 import type { ChartPoint } from "@/lib/chart";
+import { useAccounts } from "@/hooks/useAccounts";
+import { useInstruments } from "@/hooks/useInstruments";
 import { usePortfolioSeries } from "@/hooks/usePortfolio";
+import { usePositions } from "@/hooks/usePositions";
 import { useTheme } from "@/hooks/useTheme";
+import { formatSigned, formatUsd } from "@/lib/format";
+import {
+  addSeries,
+  buildAccountRows,
+  buildHoldingRows,
+  pointsByGroup,
+  splitClosed,
+} from "@/lib/positions";
 import {
   autoGranularity,
   RANGE_KEYS,
@@ -29,19 +41,6 @@ import { signalColors } from "@/utils/theme";
  * granularity/settings sheet rather than as an eighth pill (#14). */
 const PILL_RANGES = RANGE_KEYS.filter((k) => k !== "Custom");
 
-function formatUsd(value: number): string {
-  const abs = Math.abs(value);
-  const digits = abs >= 10_000 ? 0 : 2;
-  return `${value < 0 ? "−" : ""}$${abs.toLocaleString("en-US", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  })}`;
-}
-
-function formatSigned(value: number): string {
-  return `${value >= 0 ? "+" : "−"}${formatUsd(Math.abs(value)).replace("−", "")}`;
-}
-
 export default function PortfolioScreen() {
   const theme = useTheme();
   const { width } = useWindowDimensions();
@@ -50,6 +49,7 @@ export default function PortfolioScreen() {
   const [rangeKey, setRangeKey] = useState<RangeKey>("1Y");
   const [granularityOverride, setGranularityOverride] =
     useState<Granularity | null>(null);
+  const [tab, setTab] = useState<ListTab>("holdings");
 
   // A single "today" for the render, so the resolved range and every
   // label derived from it agree with each other.
@@ -63,14 +63,95 @@ export default function PortfolioScreen() {
       ? granularityOverride
       : autoGranularity(resolved.spanDays);
 
-  const series = usePortfolioSeries({
-    metric: "equity",
-    start: toApiDate(resolved.start),
-    end: toApiDate(resolved.end),
+  const rangeStart = toApiDate(resolved.start);
+  const rangeEnd = toApiDate(resolved.end);
+  const baseQuery = {
+    metric: "equity" as const,
+    start: rangeStart,
+    end: rangeEnd,
     granularity,
-    mode: "point_in_time",
-    groupBy: "none",
-  });
+    mode: "point_in_time" as const,
+  };
+
+  const series = usePortfolioSeries({ ...baseQuery, groupBy: "none" });
+
+  // Row percentages are range-scoped, so the lists re-fetch with the range
+  // exactly as the header does: the positions endpoint supplies each row's
+  // current value, and these grouped series supply the denominator it is
+  // measured against (docs/design/dashboard_v2/behaviour.md § Percentages).
+  //
+  // The Accounts tab needs value *including* cash, which is two queries —
+  // `equity` deliberately excludes CASH so the two can be added without
+  // double-counting (docs/adr/0001-dashboard-v2.md § 3). Both are gated on
+  // the tab being on screen; react-query caches, so switching back is free.
+  const positions = usePositions();
+  const instruments = useInstruments();
+  const accounts = useAccounts();
+
+  const byInstrument = usePortfolioSeries(
+    { ...baseQuery, groupBy: "instrument" },
+    { enabled: tab === "holdings" },
+  );
+  const equityByAccount = usePortfolioSeries(
+    { ...baseQuery, groupBy: "account" },
+    { enabled: tab === "accounts" },
+  );
+  const cashByAccount = usePortfolioSeries(
+    { ...baseQuery, metric: "cash_balance", groupBy: "account" },
+    { enabled: tab === "accounts" },
+  );
+
+  const holdingRows = useMemo(
+    () =>
+      buildHoldingRows({
+        positions: positions.data,
+        instruments: instruments.data,
+        pointsByInstrument: pointsByGroup(byInstrument.data),
+        rangeStart,
+      }),
+    [positions.data, instruments.data, byInstrument.data, rangeStart],
+  );
+  const { live: liveHoldings, closed: closedHoldings } = useMemo(
+    () => splitClosed(holdingRows),
+    [holdingRows],
+  );
+
+  const accountRows = useMemo(() => {
+    const equity = pointsByGroup(equityByAccount.data);
+    const cash = pointsByGroup(cashByAccount.data);
+    const combined: Record<string, ReturnType<typeof addSeries>> = {};
+    for (const id of new Set([...Object.keys(equity), ...Object.keys(cash)])) {
+      combined[id] = addSeries(equity[id], cash[id]);
+    }
+    return buildAccountRows({
+      positions: positions.data,
+      accounts: accounts.data,
+      pointsByAccount: combined,
+      rangeStart,
+    });
+  }, [
+    positions.data,
+    accounts.data,
+    equityByAccount.data,
+    cashByAccount.data,
+    rangeStart,
+  ]);
+
+  const listPending =
+    positions.isPending ||
+    (tab === "holdings"
+      ? instruments.isPending || byInstrument.isPending
+      : accounts.isPending ||
+        equityByAccount.isPending ||
+        cashByAccount.isPending);
+  const listError =
+    positions.error?.message ??
+    (tab === "holdings"
+      ? (instruments.error?.message ?? byInstrument.error?.message)
+      : (accounts.error?.message ??
+        equityByAccount.error?.message ??
+        cashByAccount.error?.message)) ??
+    null;
 
   const points: ChartPoint[] = useMemo(() => {
     const first = series.data?.[0];
@@ -200,6 +281,16 @@ export default function PortfolioScreen() {
           <Rect width={32} height={40} fill="url(#rowFade)" />
         </Svg>
       </View>
+
+      <PositionsList
+        tab={tab}
+        onSelectTab={setTab}
+        holdings={liveHoldings}
+        closedHoldings={closedHoldings}
+        accounts={accountRows}
+        isPending={listPending}
+        errorMessage={listError}
+      />
     </ScrollView>
   );
 }

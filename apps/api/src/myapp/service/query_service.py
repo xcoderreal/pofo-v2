@@ -42,6 +42,20 @@ from myapp.service.price_service import PriceService
 # validation needs, since "all" and "omitted" mean different things there.
 Scope = list[str] | Literal["all"] | None
 
+# How far before the requested start to look for a price bar. A range's
+# own start date very often has no bar of its own — it's a weekend or a
+# holiday — and a holding's value on a Saturday is Friday's close, not
+# "unknown". Without this the first boundary is silently dropped and every
+# range-scoped comparison quietly measures from the first trading day
+# instead of from the range start.
+#
+# Only the FIRST boundary can ever see these earlier bars: every interior
+# boundary's candidate window is bounded below by the previous boundary
+# (see _resample_price), so this cannot carry a price forward across an
+# interior gap. Seven days is the same "cross a weekend or a short
+# holiday" window PriceService uses for its latest-price lookback.
+_PRICE_START_LOOKBACK = timedelta(days=7)
+
 
 class InvalidMetricModeError(Exception):
     """This (metric, mode) pair isn't valid — see docs/domain-model.md's
@@ -253,14 +267,20 @@ class QueryService:
         """CASH is priced at a hardcoded 1 for every day in range — its
         price is definitional, not a market fact (see
         price_service.py's get_latest_price docstring); there's no real
-        ticker for it to fetch."""
+        ticker for it to fetch, and it needs no lookback since every day
+        already has a price.
+
+        Everything else reads from `start - _PRICE_START_LOOKBACK` so the
+        first boundary can resolve to the last close at or before it."""
         instrument = self.instrument_repo.get(instrument_id)
         if instrument is not None and instrument.asset_class == AssetClass.CASH:
             if start > end:
                 return {}
             days = (end - start).days
             return {start + timedelta(days=i): Decimal(1) for i in range(days + 1)}
-        bars = self.price_service.get_price_history(instrument_id, start, end)
+        bars = self.price_service.get_price_history(
+            instrument_id, start - _PRICE_START_LOOKBACK, end
+        )
         return {bar.date: bar.close for bar in bars}
 
     def _realized_gain_points(
