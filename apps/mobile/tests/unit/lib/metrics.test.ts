@@ -9,6 +9,8 @@ import {
 } from "@/lib/drilldown";
 import {
   buildMetricOptions,
+  defaultRangeForMetric,
+  flowTotal,
   formatMetricValue,
   METRICS,
   metricHasAccountDimension,
@@ -372,5 +374,55 @@ describe("formatMetricValue", () => {
   test("everything else is the shared money format", () => {
     expect(formatMetricValue("equity", 1234.5)).toBe("$1,234.50");
     expect(formatMetricValue("unrealized_gain", -1234.5)).toBe("−$1,234.50");
+  });
+});
+
+describe("flowTotal", () => {
+  test("per period sums the buckets", () => {
+    expect(flowTotal([300, -100, 900], false)).toBe(1100);
+  });
+
+  test("cumulative reads the running total off the last bucket", () => {
+    // The same series as above, as the API returns it in `cumulative`
+    // mode. Summing it would triple-count January.
+    expect(flowTotal([300, 200, 1100], true)).toBe(1100);
+  });
+
+  test("both modes agree on the total for the same underlying gains", () => {
+    const perPeriod = [300, -100, 900];
+    let running = 0;
+    const cumulative = perPeriod.map((value) => (running += value));
+
+    expect(flowTotal(cumulative, true)).toBe(flowTotal(perPeriod, false));
+  });
+
+  test("an empty range booked nothing, in either mode", () => {
+    expect(flowTotal([], false)).toBe(0);
+    expect(flowTotal([], true)).toBe(0);
+  });
+
+  test("a losing range totals negative", () => {
+    expect(flowTotal([-400, -100], false)).toBe(-500);
+  });
+});
+
+describe("defaultRangeForMetric", () => {
+  test("realized gain defaults to year-to-date — the tax-relevant window", () => {
+    expect(defaultRangeForMetric("realized_gain")).toBe("YTD");
+  });
+
+  test("every Level metric keeps the range that is showing", () => {
+    for (const metric of METRICS.filter((m) => metricKind(m) === "level")) {
+      expect(defaultRangeForMetric(metric)).toBeNull();
+    }
+  });
+
+  test("the one metric with an opinion is the one Flow", () => {
+    const opinionated = METRICS.filter(
+      (m) => defaultRangeForMetric(m) !== null,
+    );
+
+    expect(opinionated).toEqual(["realized_gain"]);
+    expect(opinionated.map(metricKind)).toEqual(["flow"]);
   });
 });

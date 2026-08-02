@@ -29,6 +29,7 @@
 
 import type { components } from "./api-types";
 import { formatShares, formatUsd } from "./format";
+import type { RangeKey } from "./timeseries";
 
 export type Metric = components["schemas"]["Metric"];
 export type Mode = components["schemas"]["Mode"];
@@ -69,6 +70,41 @@ export function metricMode(metric: Metric, cumulative: boolean): Mode {
     return cumulative ? "cumulative" : "delta_per_period";
   }
   return "point_in_time";
+}
+
+/**
+ * A Flow's headline figure: the total booked across the whole visible
+ * range (behaviour.md § Metrics).
+ *
+ * The two modes reach the same number by different routes, which is the
+ * point of it being one function — `delta_per_period` hands back what each
+ * bucket booked, so the total is their sum, while `cumulative` has already
+ * summed them and the total is simply the last bucket. Reading the last
+ * point in both modes would show the final month's gain and call it the
+ * year's.
+ */
+export function flowTotal(values: readonly number[], cumulative: boolean): number {
+  if (values.length === 0) return 0;
+  if (cumulative) return values[values.length - 1];
+  return values.reduce((total, value) => total + value, 0);
+}
+
+/**
+ * The range a metric wants when it is selected from search (#26).
+ *
+ * `null` means "keep whatever range is showing" — which is every metric
+ * but one. `realized_gain` asks for year-to-date because that is the
+ * tax-relevant window, and a Flow's default range is a statement about
+ * *what is being asked*, not a leftover from the previous view: "how much
+ * did I book" over an arbitrary trailing year answers nothing anyone filed.
+ *
+ * Deliberately not applied by the Metric sheet. Switching metric from the
+ * sheet is a change of one thing, and silently moving the range under a
+ * user who just set it is the kind of help nobody asked for. Search is
+ * different — it constructs a whole destination at once.
+ */
+export function defaultRangeForMetric(metric: Metric): RangeKey | null {
+  return metric === "realized_gain" ? "YTD" : null;
 }
 
 // ─── Dimensions ───────────────────────────────────────────────

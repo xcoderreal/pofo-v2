@@ -37,6 +37,7 @@ import {
 import { formatSigned } from "@/lib/format";
 import {
   buildMetricOptions,
+  flowTotal,
   formatMetricValue,
   metricKind,
   metricLabel,
@@ -57,7 +58,7 @@ import {
 } from "@/lib/positions";
 import {
   autoGranularity,
-  bucketNoun,
+  bucketCountLabel,
   buildGranularityOptions,
   fromApiDate,
   RANGE_KEYS,
@@ -85,6 +86,19 @@ const WHOLE_PORTFOLIO = "__all__";
 /** Below this, an account's cash is rounding dust rather than a balance
  * worth its own row — the prototype's own threshold. */
 const CASH_ROW_THRESHOLD = 1;
+
+/**
+ * The Flow toggle's two segments, as `[cumulative, label]`.
+ *
+ * They are the query's two Flow modes wearing plain words: `false` is
+ * `delta_per_period` ("what each bucket booked") and `true` is
+ * `cumulative` ("the running total"). `metricMode` does the translation,
+ * so this array never names a `Mode`.
+ */
+const MODE_SEGMENTS: readonly [cumulative: boolean, label: string][] = [
+  [false, "Per period"],
+  [true, "Cumulative"],
+];
 
 export default function PortfolioScreen() {
   const theme = useTheme();
@@ -482,22 +496,24 @@ export default function PortfolioScreen() {
     }));
   }, [series.data]);
 
-  // `realized_gain` is the only Flow: its headline is the total booked
-  // across the visible range, and its sub-line reports the range and
-  // bucket count — a percentage against a flow's first bucket is
-  // meaningless (behaviour.md § Metrics). The bars and the per-period /
-  // cumulative toggle are #19; this is the line-shaped version of it.
+  // `realized_gain` is the only Flow: it draws as bars around a zero
+  // baseline, its headline is the total booked across the visible range,
+  // and its sub-line reports the range and bucket count — a percentage
+  // against a flow's first bucket is meaningless (behaviour.md § Metrics).
   const isFlow = metricKind(state.metric) === "flow";
   const latest = points.length ? points[points.length - 1].value : 0;
   const opening = points.length ? points[0].value : 0;
-  const booked = points.reduce((total, point) => total + point.value, 0);
+  const booked = flowTotal(
+    points.map((point) => point.value),
+    state.cumulative,
+  );
   const headline = isFlow
-    ? formatSigned(state.cumulative ? latest : booked)
+    ? formatSigned(booked)
     : formatMetricValue(state.metric, latest);
   const change = latest - opening;
   const pctChange = opening === 0 ? null : (change / Math.abs(opening)) * 100;
   const changeColor = isFlow
-    ? (state.cumulative ? latest : booked) >= 0
+    ? booked >= 0
       ? signalColors.up
       : signalColors.down
     : change >= 0
@@ -562,7 +578,7 @@ export default function PortfolioScreen() {
             <View style={styles.deltaRow}>
               <Text testID="delta" style={[styles.delta, { color: changeColor }]}>
                 {isFlow
-                  ? `${points.length} ${bucketNoun(granularity)} buckets`
+                  ? bucketCountLabel(points.length, granularity)
                   : `${formatSigned(change)}${
                       pctChange === null
                         ? ""
@@ -578,6 +594,7 @@ export default function PortfolioScreen() {
               testID="portfolio-chart"
               points={points}
               width={chartWidth}
+              variant={isFlow ? "bars" : "line"}
             />
           </>
         )}
@@ -635,10 +652,47 @@ export default function PortfolioScreen() {
               <Text style={styles.granularityCaret}>⌄</Text>
             </Pressable>
 
-            {/* Reserved slot for the Per period / Cumulative toggle that
-                arrives with realized gain (#19). Present but empty, so
-                switching metric never reflows this row. */}
-            <View testID="mode-slot" style={styles.modeSlot} />
+            {/* The Per period / Cumulative toggle, in the slot #14
+                reserved for it. The slot keeps its size whether or not the
+                toggle is in it, so a metric switch fills it rather than
+                reflowing the row. */}
+            <View testID="mode-slot" style={styles.modeSlot}>
+              {isFlow ? (
+                <View testID="mode-toggle" style={styles.modeToggle}>
+                  {MODE_SEGMENTS.map(([cumulative, label]) => {
+                    const key = cumulative ? "cumulative" : "per-period";
+                    const active = state.cumulative === cumulative;
+                    return (
+                      <Pressable
+                        key={key}
+                        testID={`mode-${key}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        onPress={() => view.update({ ...state, cumulative })}
+                        style={[
+                          styles.modeSegment,
+                          active && styles.modeSegmentActive,
+                        ]}
+                      >
+                        {/* Which segment is on is a colour difference, and
+                            a colour difference is not assertable. The
+                            marker testID is how the Metric and Granularity
+                            sheets already expose their selection. */}
+                        <Text
+                          testID={active ? `mode-selected-${key}` : undefined}
+                          style={[
+                            styles.modeText,
+                            active && styles.modeTextActive,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
           </ScrollView>
 
           <Svg
@@ -864,9 +918,30 @@ function makeStyles(theme: ReturnType<typeof useTheme>) {
       color: theme.colors.textTertiary,
       fontSize: theme.fontSize.xs,
     },
-    // Width matches the toggle that lands in #19, so its arrival is a
-    // fill, not a reflow.
-    modeSlot: { width: 148, height: 32 },
+    // Fixed, and the toggle inside it is `flex: 1` in both directions —
+    // the slot's size is what keeps the control row from reflowing when
+    // the metric changes, so it must not be derived from its contents.
+    modeSlot: { width: 148, height: 32, marginLeft: theme.spacing.sm },
+    modeToggle: {
+      flex: 1,
+      flexDirection: "row",
+      borderRadius: 999,
+      backgroundColor: theme.colors.surface,
+      padding: 2,
+    },
+    modeSegment: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 999,
+    },
+    modeSegmentActive: { backgroundColor: theme.colors.border },
+    modeText: {
+      color: theme.colors.textTertiary,
+      fontSize: theme.fontSize.xs,
+      fontWeight: "500",
+    },
+    modeTextActive: { color: theme.colors.text },
     fade: { position: "absolute", right: 0, top: 0, bottom: 0 },
   });
 }

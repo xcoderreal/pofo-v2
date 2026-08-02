@@ -219,6 +219,25 @@ export function bucketNoun(granularity: Granularity): string {
   }
 }
 
+/**
+ * A Flow's sub-line: how many buckets are on screen, and of what size.
+ *
+ * This is what stands in for the percentage a Level metric shows, because
+ * a percentage against a flow's first bucket is meaningless — divide the
+ * year's gains by January's and you get a number that says nothing
+ * (behaviour.md § Metrics). The count is the buckets actually drawn, which
+ * for `delta_per_period` is the buckets that booked something: the query
+ * interface drops empty ones rather than padding, and claiming twelve
+ * months when four bars are visible would be describing a different chart.
+ */
+export function bucketCountLabel(
+  count: number,
+  granularity: Granularity,
+): string {
+  const noun = bucketNoun(granularity);
+  return `${count} ${noun} bucket${count === 1 ? "" : "s"}`;
+}
+
 // ─── Custom range ─────────────────────────────────────────────
 
 export type CustomRangeResult =

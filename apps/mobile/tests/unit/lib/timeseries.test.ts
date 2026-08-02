@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   autoGranularity,
+  bucketCountLabel,
   bucketNoun,
   buildGranularityOptions,
   fromApiDate,
@@ -305,5 +306,25 @@ describe("fromApiDate", () => {
     // in any timezone behind it.
     expect(toApiDate(fromApiDate("2026-01-01"))).toBe("2026-01-01");
     expect(fromApiDate("2026-01-01").getHours()).toBe(0);
+  });
+});
+
+describe("bucketCountLabel", () => {
+  test("names the bucket size, not the granularity", () => {
+    // "12 week buckets", never the prototype's "dai buckets".
+    expect(bucketCountLabel(12, "weekly")).toBe("12 week buckets");
+    expect(bucketCountLabel(30, "daily")).toBe("30 day buckets");
+    expect(bucketCountLabel(8, "monthly")).toBe("8 month buckets");
+    expect(bucketCountLabel(3, "yearly")).toBe("3 year buckets");
+  });
+
+  test("one bucket is singular", () => {
+    // The seeded demo books a single sell, so a one-bar chart is the
+    // ordinary case rather than an edge one.
+    expect(bucketCountLabel(1, "monthly")).toBe("1 month bucket");
+  });
+
+  test("no buckets is plural", () => {
+    expect(bucketCountLabel(0, "daily")).toBe("0 day buckets");
   });
 });

@@ -69,4 +69,5 @@ places. Follow the docs, not the prototype:
 | Ignores metric/scope mismatches | Resolves them; the API rejects them ([ADR-0001](../../adr/0001-dashboard-v2.md) § 6) |
 | Matrix capped at 7 × 4 | Every held instrument; every account holding one |
 | Row % is lifetime, header % is range | Both range-scoped; `—` when there's no denominator |
+| Realized gain is bars per-period, a line cumulative | Bars in both modes — [`behaviour.md`](behaviour.md) § Metrics says "bars, not a line" of the metric, not of one mode |
 | Search is client-side over mock data | Same grammar, real endpoints |
