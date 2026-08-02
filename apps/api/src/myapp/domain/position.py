@@ -14,6 +14,7 @@ Positions are computed on read from the Transaction ledger — never stored.
 """
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
@@ -191,12 +192,38 @@ def compute_lots(
 
 
 def compute_position(
-    account_id: str, instrument_id: str, transactions: list[Transaction]
+    account_id: str,
+    instrument_id: str,
+    transactions: list[Transaction],
+    as_of: date | None = None,
 ) -> Position:
+    """`as_of`, when given, computes the position as it stood at the end
+    of that date — transactions after it are excluded entirely, as if
+    they hadn't happened yet. This is what lets the query interface
+    (service/query_service.py) sample a Position at any past date without
+    a second, parallel computation path."""
     relevant = [
         t
         for t in transactions
-        if t.account_id == account_id and t.instrument_id == instrument_id
+        if t.account_id == account_id
+        and t.instrument_id == instrument_id
+        and (as_of is None or t.timestamp.date() <= as_of)
     ]
     lots = compute_lots(relevant)
     return Position(account_id=account_id, instrument_id=instrument_id, lots=lots)
+
+
+def realized_gain_events(lots: list[Lot]) -> list[tuple[Transaction, Decimal]]:
+    """Every closing event across the given lots, as (closing transaction,
+    gain) — the raw per-event fold the Flow metric `realized_gain` is
+    defined over (docs/domain-model.md § Gains). Bucketing these into
+    periods is a query-interface concern, not a domain one — see
+    service/query_service.py."""
+    events = []
+    for lot in lots:
+        for closing_transaction, quantity in lot.closes:
+            gain = (
+                closing_transaction.price - lot.opening_transaction.price
+            ) * quantity
+            events.append((closing_transaction, gain))
+    return events

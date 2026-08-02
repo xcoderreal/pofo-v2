@@ -159,6 +159,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/portfolio/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query Portfolio */
+        get: operations["query_portfolio_portfolio_query_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -249,6 +266,16 @@ export interface components {
              */
             timestamp: string;
         };
+        /**
+         * Granularity
+         * @enum {string}
+         */
+        Granularity: "daily" | "weekly" | "monthly" | "yearly";
+        /**
+         * GroupBy
+         * @enum {string}
+         */
+        GroupBy: "none" | "instrument" | "account";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -264,6 +291,16 @@ export interface components {
             name: string;
             asset_class: components["schemas"]["AssetClass"];
         };
+        /**
+         * Metric
+         * @enum {string}
+         */
+        Metric: "equity" | "share_count" | "cost_basis" | "cash_balance" | "unrealized_gain" | "realized_gain" | "market_price";
+        /**
+         * Mode
+         * @enum {string}
+         */
+        Mode: "point_in_time" | "cumulative" | "delta_per_period";
         /** PositionResponse */
         PositionResponse: {
             /** Account Id */
@@ -274,6 +311,23 @@ export interface components {
             share_count: string;
             /** Cost Basis */
             cost_basis: string;
+        };
+        /** SeriesResponse */
+        SeriesResponse: {
+            /** Group */
+            group: string;
+            /** Points */
+            points: components["schemas"]["TimeSeriesPointResponse"][];
+        };
+        /** TimeSeriesPointResponse */
+        TimeSeriesPointResponse: {
+            /**
+             * Timestamp
+             * Format: date
+             */
+            timestamp: string;
+            /** Value */
+            value: string;
         };
         /** TransactionResponse */
         TransactionResponse: {
@@ -641,6 +695,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_portfolio_portfolio_query_get: {
+        parameters: {
+            query: {
+                metric: components["schemas"]["Metric"];
+                start: string;
+                end: string;
+                granularity: components["schemas"]["Granularity"];
+                mode: components["schemas"]["Mode"];
+                instruments?: string[] | null;
+                accounts?: string[] | null;
+                group_by?: components["schemas"]["GroupBy"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeriesResponse"][];
                 };
             };
             /** @description Validation Error */

@@ -384,6 +384,131 @@
         }
       }
     },
+    "/portfolio/query": {
+      "get": {
+        "summary": "Query Portfolio",
+        "operationId": "query_portfolio_portfolio_query_get",
+        "parameters": [
+          {
+            "name": "metric",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Metric"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "End"
+            }
+          },
+          {
+            "name": "granularity",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Granularity"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Mode"
+            }
+          },
+          {
+            "name": "instruments",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instruments"
+            }
+          },
+          {
+            "name": "accounts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accounts"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/GroupBy",
+              "default": "none"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SeriesResponse"
+                  },
+                  "title": "Response Query Portfolio Portfolio Query Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -591,6 +716,25 @@
         ],
         "title": "DepositRequest"
       },
+      "Granularity": {
+        "type": "string",
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly",
+          "yearly"
+        ],
+        "title": "Granularity"
+      },
+      "GroupBy": {
+        "type": "string",
+        "enum": [
+          "none",
+          "instrument",
+          "account"
+        ],
+        "title": "GroupBy"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -631,6 +775,28 @@
         ],
         "title": "InstrumentResponse"
       },
+      "Metric": {
+        "type": "string",
+        "enum": [
+          "equity",
+          "share_count",
+          "cost_basis",
+          "cash_balance",
+          "unrealized_gain",
+          "realized_gain",
+          "market_price"
+        ],
+        "title": "Metric"
+      },
+      "Mode": {
+        "type": "string",
+        "enum": [
+          "point_in_time",
+          "cumulative",
+          "delta_per_period"
+        ],
+        "title": "Mode"
+      },
       "PositionResponse": {
         "properties": {
           "account_id": {
@@ -660,6 +826,47 @@
           "cost_basis"
         ],
         "title": "PositionResponse"
+      },
+      "SeriesResponse": {
+        "properties": {
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TimeSeriesPointResponse"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group",
+          "points"
+        ],
+        "title": "SeriesResponse"
+      },
+      "TimeSeriesPointResponse": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date",
+            "title": "Timestamp"
+          },
+          "value": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "value"
+        ],
+        "title": "TimeSeriesPointResponse"
       },
       "TransactionResponse": {
         "properties": {

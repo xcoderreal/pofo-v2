@@ -1,19 +1,21 @@
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from myapp.adapters.memory_repository import (
     MemoryAccountRepository,
     MemoryInstrumentRepository,
+    MemoryPriceHistoryRepository,
     MemoryTransactionRepository,
 )
 from myapp.adapters.stub_auth_provider import StubAuthProvider
 from myapp.adapters.supabase_auth_provider import SupabaseAuthProvider
+from myapp.adapters.yfinance_price_source import YFinancePriceSource
 from myapp.config import Settings
 from myapp.domain.auth import AuthenticationError, AuthProvider
 from myapp.domain.model import (
@@ -26,9 +28,12 @@ from myapp.domain.model import (
     User,
 )
 from myapp.domain.position import InsufficientSharesError
+from myapp.domain.price import PriceSource
+from myapp.domain.query import Granularity, GroupBy, Metric, Mode
 from myapp.domain.repository import (
     AccountRepository,
     InstrumentRepository,
+    PriceHistoryRepository,
     TransactionRepository,
 )
 from myapp.service.account_service import AccountService
@@ -38,6 +43,13 @@ from myapp.service.instrument_service import (
     DuplicateIdError as InstrumentDuplicateIdError,
 )
 from myapp.service.instrument_service import DuplicateSymbolError, InstrumentService
+from myapp.service.price_service import PriceService
+from myapp.service.query_service import (
+    AccountsNotApplicableError,
+    InstrumentsNotApplicableError,
+    InvalidMetricModeError,
+    QueryService,
+)
 from myapp.service.transaction_service import (
     AccountNotFoundError,
     InstrumentNotFoundError,
@@ -66,6 +78,8 @@ async def lifespan(app: FastAPI):
     app.state.instrument_repo = MemoryInstrumentRepository()
     app.state.account_repo = MemoryAccountRepository()
     app.state.transaction_repo = MemoryTransactionRepository()
+    app.state.price_history_repo = MemoryPriceHistoryRepository()
+    app.state.price_source = YFinancePriceSource()
     app.state.auth_provider = _build_auth_provider(settings)
     yield
 
@@ -457,6 +471,110 @@ def withdraw(
     except InsufficientSharesError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _to_transaction_response(transaction)
+
+
+# ─── Price dependencies ─────────────────────────────────────────
+
+
+def get_price_history_repo(request: Request) -> PriceHistoryRepository:
+    return request.app.state.price_history_repo
+
+
+def get_price_source(request: Request) -> PriceSource:
+    return request.app.state.price_source
+
+
+def get_price_service(
+    price_source: PriceSource = Depends(get_price_source),
+    price_history_repo: PriceHistoryRepository = Depends(get_price_history_repo),
+    instrument_repo: InstrumentRepository = Depends(get_instrument_repo),
+) -> PriceService:
+    return PriceService(
+        price_source=price_source,
+        price_history_repo=price_history_repo,
+        instrument_repo=instrument_repo,
+    )
+
+
+def get_query_service(
+    account_repo: AccountRepository = Depends(get_account_repo),
+    instrument_repo: InstrumentRepository = Depends(get_instrument_repo),
+    transaction_repo: TransactionRepository = Depends(get_transaction_repo),
+    price_service: PriceService = Depends(get_price_service),
+) -> QueryService:
+    return QueryService(
+        account_repo=account_repo,
+        instrument_repo=instrument_repo,
+        transaction_repo=transaction_repo,
+        price_service=price_service,
+    )
+
+
+# ─── Query schemas ────────────────────────────────────────────
+
+
+class TimeSeriesPointResponse(BaseModel):
+    timestamp: date
+    value: Decimal
+
+
+class SeriesResponse(BaseModel):
+    group: str
+    points: list[TimeSeriesPointResponse]
+
+
+# ─── Query routes ─────────────────────────────────────────────
+# One generic query answering arbitrary metric x instrument-scope x
+# account-scope x granularity x mode breakdowns (docs/domain-model.md),
+# instead of a page/endpoint per breakdown combination. `instruments`/
+# `accounts` use FastAPI's native repeated-query-param list support — a
+# single repeated value of "all", or omitting the param, both mean "no
+# filter" (QueryService interprets both the same way). A concrete filter
+# is rejected for a dimension that doesn't apply to the metric —
+# `accounts` for market_price, `instruments` for cash_balance.
+
+
+@app.get("/portfolio/query", response_model=list[SeriesResponse])
+def query_portfolio(
+    metric: Metric,
+    start: date,
+    end: date,
+    granularity: Granularity,
+    mode: Mode,
+    instruments: list[str] | None = Query(default=None),
+    accounts: list[str] | None = Query(default=None),
+    group_by: GroupBy = GroupBy.NONE,
+    current_user: User = Depends(get_current_user),
+    service: QueryService = Depends(get_query_service),
+):
+    try:
+        series = service.query_timeseries(
+            user_id=current_user.id,
+            metric=metric,
+            instruments=instruments,
+            accounts=accounts,
+            group_by=group_by,
+            start=start,
+            end=end,
+            granularity=granularity,
+            mode=mode,
+        )
+    except (
+        InvalidMetricModeError,
+        AccountsNotApplicableError,
+        InstrumentsNotApplicableError,
+    ) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return [
+        SeriesResponse(
+            group=s.group,
+            points=[
+                TimeSeriesPointResponse(timestamp=p.timestamp, value=p.value)
+                for p in s.points
+            ],
+        )
+        for s in series
+    ]
 
 
 # ─── Health ───────────────────────────────────────────────────

@@ -10,6 +10,7 @@ from myapp.domain.position import (
     LotMismatchError,
     compute_lots,
     compute_position,
+    realized_gain_events,
 )
 
 T0 = datetime(2026, 1, 1)
@@ -282,3 +283,50 @@ class TestComputePosition:
 
         assert position.realized_gain == Decimal("0")
         assert position.unrealized_gain(Decimal("100")) == Decimal("0")
+
+    def test_as_of_excludes_transactions_after_that_date(self) -> None:
+        buy1 = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        buy2 = _buy("t2", "acc1", "goog", "5", "150", days=5)
+
+        position = compute_position(
+            "acc1", "goog", [buy1, buy2], as_of=(T0 + timedelta(days=2)).date()
+        )
+
+        assert position.share_count == Decimal("10")  # buy2 hasn't happened yet
+
+    def test_as_of_includes_transactions_exactly_on_that_date(self) -> None:
+        buy = _buy("t1", "acc1", "goog", "10", "100", days=0)
+
+        position = compute_position("acc1", "goog", [buy], as_of=T0.date())
+
+        assert position.share_count == Decimal("10")
+
+    def test_as_of_none_behaves_like_the_full_ledger(self) -> None:
+        buy1 = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        buy2 = _buy("t2", "acc1", "goog", "5", "150", days=5)
+
+        position = compute_position("acc1", "goog", [buy1, buy2], as_of=None)
+
+        assert position.share_count == Decimal("15")
+
+
+class TestRealizedGainEvents:
+    def test_returns_one_event_per_close(self) -> None:
+        buy = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        sell1 = _sell("t2", "acc1", "goog", "4", "150", days=1)
+        sell2 = _sell("t3", "acc1", "goog", "6", "80", days=2)
+
+        lots = compute_lots([buy, sell1, sell2])
+        events = realized_gain_events(lots)
+
+        assert [(tx.id, gain) for tx, gain in events] == [
+            ("t2", Decimal("200")),  # (150-100)*4
+            ("t3", Decimal("-120")),  # (80-100)*6
+        ]
+
+    def test_open_lots_contribute_no_events(self) -> None:
+        buy = _buy("t1", "acc1", "goog", "10", "100", days=0)
+
+        lots = compute_lots([buy])
+
+        assert realized_gain_events(lots) == []
