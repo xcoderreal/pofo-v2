@@ -48,6 +48,40 @@ test("changing the range updates the range label", async ({ page }) => {
   await expect(page.getByTestId("range-label")).toHaveText("all time");
 });
 
+test("Max spans the whole history, not a single day", async ({ page }) => {
+  // The bug this guards against: the screen resolved Max with no earliest
+  // transaction date, so it collapsed to `start = end = today` — one
+  // point, "+$0.00  +0.00%", Daily granularity, under a label still
+  // reading "all time". The test above only ever asserted that label,
+  // which is exactly why this shipped broken. So: assert the *request*.
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  const charted = page.waitForRequest(
+    (request) =>
+      request.url().includes("/portfolio/query") &&
+      request.url().includes("group_by=none"),
+  );
+  await page.getByTestId("range-Max").click();
+  const params = new URL((await charted).url()).searchParams;
+
+  const start = params.get("start");
+  const end = params.get("end");
+  expect(start).not.toBeNull();
+  expect(end).not.toBe(start);
+  // The demo seed's first deposit is 730 days back, so anything under a
+  // year means the earliest-transaction date never arrived.
+  const spanDays =
+    (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) /
+    86_400_000;
+  expect(spanDays).toBeGreaterThan(365);
+
+  await expect(page.getByTestId("range-label")).toHaveText("all time");
+  // Daily is what a one-day span auto-selects; a two-year span is monthly.
+  await expect(page.getByTestId("granularity-chip")).toContainText("Monthly");
+  await expect(page.getByTestId("delta")).not.toHaveText("+$0.00  +0.00%");
+});
+
 test("granularity follows the selected range's span", async ({ page }) => {
   await page.goto("/");
   await page.waitForLoadState("networkidle");

@@ -17,55 +17,29 @@ import { PortfolioChart } from "@/components/PortfolioChart";
 import { PositionsList } from "@/components/PositionsList";
 import { ScopeChips } from "@/components/ScopeChips";
 import { UndoToast } from "@/components/UndoToast";
-import type { ChartPoint } from "@/lib/chart";
-import { useAccounts } from "@/hooks/useAccounts";
-import { useInstruments } from "@/hooks/useInstruments";
-import { usePortfolioSeries } from "@/hooks/usePortfolio";
-import { usePositions } from "@/hooks/usePositions";
+import { useDashboard } from "@/hooks/useDashboard";
 import { useTheme } from "@/hooks/useTheme";
 import { useViewState } from "@/hooks/useViewState";
+import { WHOLE_PORTFOLIO_KEY } from "@/lib/accounts";
 import {
-  buildChips,
   clearAccount,
   clearInstrument,
-  scopeParams,
   selectAccount,
   selectInstrument,
   type ListTab,
   type ScopeChip,
 } from "@/lib/drilldown";
-import { formatSigned } from "@/lib/format";
 import {
   buildMetricOptions,
-  flowTotal,
-  formatMetricValue,
   metricKind,
   metricLabel,
-  metricMode,
   resolveMetricChoice,
   type Metric,
 } from "@/lib/metrics";
 import {
-  accountHoldsInstruments,
-  addSeries,
-  buildAccountRows,
-  buildHoldingRows,
-  buildInstrumentAccountRows,
-  buildInstrumentStats,
-  cashBalanceFor,
-  pointsByGroup,
-  splitClosed,
-} from "@/lib/positions";
-import {
-  autoGranularity,
-  bucketCountLabel,
   buildGranularityOptions,
-  fromApiDate,
   RANGE_KEYS,
   rangeLabel,
-  resolveRange,
-  toApiDate,
-  validGranularities,
   type Granularity,
 } from "@/lib/timeseries";
 import { signalColors } from "@/utils/theme";
@@ -78,14 +52,6 @@ const PILL_RANGES = RANGE_KEYS;
 /** Which bottom sheet is open, if any. One slot: they are all modal, so
  * two at once is not a state worth representing. */
 type SheetKind = "metric" | "granularity" | "accounts" | "custom";
-
-/** The Accounts sheet's "no account filter" row. Not an account id, so it
- * cannot collide with one. */
-const WHOLE_PORTFOLIO = "__all__";
-
-/** Below this, an account's cash is rounding dust rather than a balance
- * worth its own row — the prototype's own threshold. */
-const CASH_ROW_THRESHOLD = 1;
 
 /**
  * The Flow toggle's two segments, as `[cumulative, label]`.
@@ -100,6 +66,16 @@ const MODE_SEGMENTS: readonly [cumulative: boolean, label: string][] = [
   [true, "Cumulative"],
 ];
 
+/**
+ * The Portfolio tab.
+ *
+ * Thin by design (CLAUDE.md § "Pages are thin"): every figure on screen
+ * is computed by `useDashboard` — which composes the per-resource hooks
+ * and the pure functions in `lib/dashboard.ts` and `lib/positions.ts` —
+ * and every state transition is a pure `ViewState -> ViewState` in
+ * `lib/drilldown.ts`. What is left here is the wiring: which sheet is
+ * open, what each control does, and what the JSX looks like.
+ */
 export default function PortfolioScreen() {
   const theme = useTheme();
   const { width } = useWindowDimensions();
@@ -112,209 +88,9 @@ export default function PortfolioScreen() {
   const { state, level } = view;
   const [sheet, setSheet] = useState<SheetKind | null>(null);
 
-  // A single "today" for the render, so the resolved range and every
-  // label derived from it agree with each other.
-  const today = useMemo(() => new Date(), []);
-  const resolved = useMemo(() => {
-    // `resolveRange` throws on Custom without bounds, and a screen that
-    // can throw on a state transition is not a screen. The two always
-    // move together (the Custom sheet sets both), so this is a guard
-    // rather than a branch anyone reaches.
-    if (state.rangeKey === "Custom" && state.customRange === null) {
-      return resolveRange("1Y", today);
-    }
-    return resolveRange(state.rangeKey, today, {
-      custom: state.customRange
-        ? {
-            start: fromApiDate(state.customRange.start),
-            end: fromApiDate(state.customRange.end),
-          }
-        : null,
-    });
-  }, [state.rangeKey, state.customRange, today]);
-  const granularity =
-    state.granularity &&
-    validGranularities(resolved.spanDays).includes(state.granularity)
-      ? state.granularity
-      : autoGranularity(resolved.spanDays);
-
-  const rangeStart = toApiDate(resolved.start);
-  const rangeEnd = toApiDate(resolved.end);
-  const rangeWindow = { start: rangeStart, end: rangeEnd, granularity };
-  const listQuery = {
-    // The lists' denominators are always about *value*, whatever the
-    // chart above them is plotting — a row's percentage is the change in
-    // what it is worth (behaviour.md § Percentages).
-    metric: "equity" as const,
-    ...rangeWindow,
-    mode: "point_in_time" as const,
-  };
-
-  const instruments = useInstruments();
-  const accounts = useAccounts();
-
-  // One unscoped positions call feeds every level. The rows are keyed by
-  // (account, instrument), so narrowing is a filter rather than a
-  // refetch — which is what makes drilling in instant and keeps the
-  // stat card, the lists and (from #20) the Grid matrix reading the same
-  // batched call (docs/adr/0001-dashboard-v2.md § 5).
-  const positions = usePositions();
-  const scopedPositions = useMemo(
-    () =>
-      (positions.data ?? []).filter(
-        (row) =>
-          (state.accountId === null || row.account_id === state.accountId) &&
-          (state.instrumentId === null ||
-            row.instrument_id === state.instrumentId),
-      ),
-    [positions.data, state.accountId, state.instrumentId],
-  );
-
-  // A Level is queried at an instant and a Flow over an interval; the API
-  // rejects the wrong pairing (docs/domain-model.md § (Metric, Mode)
-  // validity), so the mode follows the metric rather than being fixed.
-  const series = usePortfolioSeries({
-    metric: state.metric,
-    ...rangeWindow,
-    mode: metricMode(state.metric, state.cumulative),
-    groupBy: "none",
-    ...scopeParams(state),
-  });
-
-  // Row percentages are range-scoped, so the lists re-fetch with the
-  // range exactly as the header does: the positions endpoint supplies
-  // each row's current value, and these grouped series supply the
-  // denominator it is measured against.
-  //
-  // Which grouping is needed depends on the level — by instrument for a
-  // holdings list, by account for the instrument level's breakdown — and
-  // each is gated on being on screen. react-query caches, so stepping
-  // back up a level is free.
-  const wantsHoldings =
-    (level === "portfolio" && state.tab === "holdings") ||
-    level === "account" ||
-    level === "slice";
-  const wantsAccountsTab = level === "portfolio" && state.tab === "accounts";
-  const wantsBreakdown = level === "instrument";
-
-  const byInstrument = usePortfolioSeries(
-    {
-      ...listQuery,
-      groupBy: "instrument",
-      accounts: state.accountId ? [state.accountId] : undefined,
-      instruments: state.instrumentId ? [state.instrumentId] : undefined,
-    },
-    { enabled: wantsHoldings },
-  );
-  // The Accounts tab needs value *including* cash, which is two queries —
-  // `equity` deliberately excludes CASH so the two can be added without
-  // double-counting (docs/adr/0001-dashboard-v2.md § 3).
-  const equityByAccount = usePortfolioSeries(
-    { ...listQuery, groupBy: "account" },
-    { enabled: wantsAccountsTab },
-  );
-  const cashByAccount = usePortfolioSeries(
-    { ...listQuery, metric: "cash_balance", groupBy: "account" },
-    { enabled: wantsAccountsTab },
-  );
-  const byAccountForInstrument = usePortfolioSeries(
-    {
-      ...listQuery,
-      groupBy: "account",
-      instruments: state.instrumentId ? [state.instrumentId] : undefined,
-    },
-    { enabled: wantsBreakdown },
-  );
-
-  // ─── Rows ───────────────────────────────────────────────────
-
-  const holdingRows = useMemo(
-    () =>
-      buildHoldingRows({
-        positions: scopedPositions,
-        instruments: instruments.data,
-        pointsByInstrument: pointsByGroup(byInstrument.data),
-        rangeStart,
-      }),
-    [scopedPositions, instruments.data, byInstrument.data, rangeStart],
-  );
-  const { live: liveHoldings, closed: closedHoldings } = useMemo(
-    () => splitClosed(holdingRows),
-    [holdingRows],
-  );
-
-  const accountRows = useMemo(() => {
-    const equity = pointsByGroup(equityByAccount.data);
-    const cash = pointsByGroup(cashByAccount.data);
-    const combined: Record<string, ReturnType<typeof addSeries>> = {};
-    for (const id of new Set([...Object.keys(equity), ...Object.keys(cash)])) {
-      combined[id] = addSeries(equity[id], cash[id]);
-    }
-    return buildAccountRows({
-      positions: positions.data,
-      accounts: accounts.data,
-      pointsByAccount: combined,
-      rangeStart,
-    });
-  }, [
-    positions.data,
-    accounts.data,
-    equityByAccount.data,
-    cashByAccount.data,
-    rangeStart,
-  ]);
-
-  const breakdownRows = useMemo(
-    () =>
-      state.instrumentId === null
-        ? []
-        : buildInstrumentAccountRows({
-            positions: scopedPositions,
-            accounts: accounts.data,
-            instrumentId: state.instrumentId,
-            pointsByAccount: pointsByGroup(byAccountForInstrument.data),
-            rangeStart,
-          }),
-    [
-      scopedPositions,
-      accounts.data,
-      state.instrumentId,
-      byAccountForInstrument.data,
-      rangeStart,
-    ],
-  );
-  const { live: liveBreakdown, closed: closedBreakdown } = useMemo(
-    () => splitClosed(breakdownRows),
-    [breakdownRows],
-  );
-
-  const stats = useMemo(
-    () =>
-      state.instrumentId === null
-        ? null
-        : buildInstrumentStats(scopedPositions, state.instrumentId),
-    [scopedPositions, state.instrumentId],
-  );
-
-  const cashValue =
-    level === "account" && state.accountId !== null
-      ? cashBalanceFor({
-          positions: positions.data,
-          instruments: instruments.data,
-          accountId: state.accountId,
-        })
-      : null;
-  const showCashRow =
-    cashValue !== null && Math.abs(cashValue) >= CASH_ROW_THRESHOLD;
-
-  // An account with no holdings — live or closed — and no cash has
-  // nothing to chart: the equity series would be a flat zero, which reads
-  // as a broken screen rather than as an empty one.
-  const accountIsEmpty =
-    level === "account" &&
-    positions.isSuccess &&
-    holdingRows.length === 0 &&
-    !showCashRow;
+  const dashboard = useDashboard(state, level);
+  const { range, chart, lists } = dashboard;
+  const isFlow = metricKind(state.metric) === "flow";
 
   // ─── Transitions ────────────────────────────────────────────
 
@@ -327,15 +103,11 @@ export default function PortfolioScreen() {
       setSheet(null);
       view.update(
         selectAccount(state, accountId, {
-          holdsInstruments: accountHoldsInstruments({
-            positions: positions.data,
-            instruments: instruments.data,
-            accountId,
-          }),
+          holdsInstruments: dashboard.accountHoldsInstruments(accountId),
         }),
       );
     },
-    [state, view, positions.data, instruments.data],
+    [state, view, dashboard],
   );
   const onSelectTab = useCallback(
     (tab: ListTab) => view.update({ ...state, tab }),
@@ -422,7 +194,7 @@ export default function PortfolioScreen() {
   const granularityOptions = useMemo<SheetOption[]>(
     () =>
       buildGranularityOptions({
-        spanDays: resolved.spanDays,
+        spanDays: range.spanDays,
         granularity: state.granularity,
       }).map((option) => ({
         key: option.granularity,
@@ -431,94 +203,8 @@ export default function PortfolioScreen() {
         selected: option.selected,
         disabled: option.disabled,
       })),
-    [resolved.spanDays, state.granularity],
+    [range.spanDays, state.granularity],
   );
-
-  const accountOptions = useMemo<SheetOption[]>(
-    () => [
-      {
-        key: WHOLE_PORTFOLIO,
-        label: "Whole portfolio",
-        note: `All ${(accounts.data ?? []).length} accounts combined`,
-        selected: state.accountId === null,
-      },
-      ...(accounts.data ?? []).map((account) => ({
-        key: account.id,
-        label: account.name,
-        note: `${account.institution} · ${account.account_type}`,
-        selected: state.accountId === account.id,
-      })),
-    ],
-    [accounts.data, state.accountId],
-  );
-
-  const chips = useMemo(
-    () =>
-      buildChips({
-        scope: state,
-        instruments: instruments.data,
-        accounts: accounts.data,
-      }),
-    [state, instruments.data, accounts.data],
-  );
-
-  // ─── Pending / error, per level ─────────────────────────────
-  // Only the queries actually enabled for this level are consulted: a
-  // disabled react-query sits in `pending` forever, so folding them all
-  // together would pin the list on its spinner.
-
-  const listPending =
-    positions.isPending ||
-    (wantsAccountsTab
-      ? accounts.isPending ||
-        equityByAccount.isPending ||
-        cashByAccount.isPending
-      : wantsBreakdown
-        ? accounts.isPending || byAccountForInstrument.isPending
-        : instruments.isPending || byInstrument.isPending);
-  const listError =
-    positions.error?.message ??
-    (wantsAccountsTab
-      ? (accounts.error?.message ??
-        equityByAccount.error?.message ??
-        cashByAccount.error?.message)
-      : wantsBreakdown
-        ? (accounts.error?.message ?? byAccountForInstrument.error?.message)
-        : (instruments.error?.message ?? byInstrument.error?.message)) ??
-    null;
-
-  const points: ChartPoint[] = useMemo(() => {
-    const first = series.data?.[0];
-    if (!first) return [];
-    return first.points.map((p) => ({
-      timestamp: new Date(`${p.timestamp}T00:00:00`),
-      value: Number(p.value),
-    }));
-  }, [series.data]);
-
-  // `realized_gain` is the only Flow: it draws as bars around a zero
-  // baseline, its headline is the total booked across the visible range,
-  // and its sub-line reports the range and bucket count — a percentage
-  // against a flow's first bucket is meaningless (behaviour.md § Metrics).
-  const isFlow = metricKind(state.metric) === "flow";
-  const latest = points.length ? points[points.length - 1].value : 0;
-  const opening = points.length ? points[0].value : 0;
-  const booked = flowTotal(
-    points.map((point) => point.value),
-    state.cumulative,
-  );
-  const headline = isFlow
-    ? formatSigned(booked)
-    : formatMetricValue(state.metric, latest);
-  const change = latest - opening;
-  const pctChange = opening === 0 ? null : (change / Math.abs(opening)) * 100;
-  const changeColor = isFlow
-    ? booked >= 0
-      ? signalColors.up
-      : signalColors.down
-    : change >= 0
-      ? signalColors.up
-      : signalColors.down;
 
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
@@ -548,12 +234,12 @@ export default function PortfolioScreen() {
         </Pressable>
 
         <ScopeChips
-          chips={chips}
+          chips={dashboard.chips}
           onClear={onClearChip}
           onOpenAccounts={() => setSheet("accounts")}
         />
 
-        {accountIsEmpty ? (
+        {dashboard.accountIsEmpty ? (
           <View testID="account-empty" style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Nothing here yet</Text>
             <Text style={styles.emptySub}>
@@ -561,38 +247,42 @@ export default function PortfolioScreen() {
               from that date.
             </Text>
           </View>
-        ) : series.isPending ? (
+        ) : chart.isPending ? (
           <View testID="chart-loading" style={styles.loading}>
             <ActivityIndicator color={theme.colors.primary} />
             <Text style={styles.loadingText}>Fetching prices…</Text>
           </View>
-        ) : series.isError ? (
+        ) : chart.errorMessage !== null ? (
           <View testID="chart-error" style={styles.loading}>
-            <Text style={styles.errorText}>{series.error.message}</Text>
+            <Text style={styles.errorText}>{chart.errorMessage}</Text>
           </View>
         ) : (
           <>
             <Text testID="big-value" style={styles.bigValue}>
-              {headline}
+              {chart.headline.value}
             </Text>
             <View style={styles.deltaRow}>
-              <Text testID="delta" style={[styles.delta, { color: changeColor }]}>
-                {isFlow
-                  ? bucketCountLabel(points.length, granularity)
-                  : `${formatSigned(change)}${
-                      pctChange === null
-                        ? ""
-                        : `  ${pctChange >= 0 ? "+" : "−"}${Math.abs(pctChange).toFixed(2)}%`
-                    }`}
+              <Text
+                testID="delta"
+                style={[
+                  styles.delta,
+                  {
+                    color: chart.headline.rising
+                      ? signalColors.up
+                      : signalColors.down,
+                  },
+                ]}
+              >
+                {chart.headline.delta}
               </Text>
               <Text testID="range-label" style={styles.rangeLabel}>
-                {rangeLabel(state.rangeKey)}
+                {rangeLabel(range.key)}
               </Text>
             </View>
 
             <PortfolioChart
               testID="portfolio-chart"
-              points={points}
+              points={chart.points}
               width={chartWidth}
               variant={isFlow ? "bars" : "line"}
             />
@@ -647,7 +337,8 @@ export default function PortfolioScreen() {
               style={styles.granularityChip}
             >
               <Text style={styles.granularityText}>
-                {granularity.charAt(0).toUpperCase() + granularity.slice(1)}
+                {range.granularity.charAt(0).toUpperCase() +
+                  range.granularity.slice(1)}
               </Text>
               <Text style={styles.granularityCaret}>⌄</Text>
             </Pressable>
@@ -720,16 +411,18 @@ export default function PortfolioScreen() {
           </Svg>
         </View>
 
-        {accountIsEmpty ? null : level === "instrument" ? (
+        {dashboard.accountIsEmpty ? null : level === "instrument" ? (
           <>
-            {stats ? <InstrumentStatCard stats={stats} /> : null}
+            {dashboard.stats ? (
+              <InstrumentStatCard stats={dashboard.stats} />
+            ) : null}
             <AccountBreakdownList
               title="Across your accounts"
-              rows={liveBreakdown}
-              closedRows={closedBreakdown}
+              rows={lists.breakdown.live}
+              closedRows={lists.breakdown.closed}
               onSelectAccount={onSelectAccount}
-              isPending={listPending}
-              errorMessage={listError}
+              isPending={lists.isPending}
+              errorMessage={lists.errorMessage}
               emptyMessage="You don't hold this in any account."
             />
           </>
@@ -738,24 +431,15 @@ export default function PortfolioScreen() {
             showTabs={level === "portfolio"}
             tab={state.tab}
             onSelectTab={onSelectTab}
-            holdings={liveHoldings}
-            closedHoldings={closedHoldings}
-            accounts={accountRows}
-            cash={
-              showCashRow && cashValue !== null
-                ? {
-                    value: cashValue,
-                    subtitle: liveHoldings.length
-                      ? "Uninvested"
-                      : "No instruments in this account",
-                  }
-                : null
-            }
+            holdings={lists.holdings.live}
+            closedHoldings={lists.holdings.closed}
+            accounts={lists.accounts}
+            cash={dashboard.cash}
             onSelectInstrument={onSelectInstrument}
             onSelectAccount={onSelectAccount}
             onSelectCash={onSelectCash}
-            isPending={listPending}
-            errorMessage={listError}
+            isPending={lists.isPending}
+            errorMessage={lists.errorMessage}
           />
         )}
       </ScrollView>
@@ -791,9 +475,9 @@ export default function PortfolioScreen() {
           testID="accounts-sheet"
           title="Accounts"
           subtitle="Pick one, or stay on the whole portfolio."
-          options={accountOptions}
+          options={dashboard.accountOptions}
           onSelect={(key) =>
-            key === WHOLE_PORTFOLIO
+            key === WHOLE_PORTFOLIO_KEY
               ? onSelectWholePortfolio()
               : onSelectAccount(key)
           }
