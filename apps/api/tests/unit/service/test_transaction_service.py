@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -251,3 +251,53 @@ class TestGetPosition:
 
         assert position is not None
         assert position.share_count == Decimal("0")
+
+
+class TestGetEarliestTransactionDate:
+    """What the dashboard's "Max" range resolves to. Without it the range
+    collapses to a single day and the chart shows one point labelled
+    "all time" (docs/design/dashboard_v2/behaviour.md § Ranges)."""
+
+    def _at(self, when: datetime, account_id: str = "acc1") -> Transaction:
+        return Transaction(
+            id=f"t-{when.isoformat()}-{account_id}",
+            user_id="user-a",
+            account_id=account_id,
+            instrument_id="goog",
+            type=TransactionType.BUY,
+            quantity=Decimal("1"),
+            price=Decimal("100"),
+            timestamp=when,
+        )
+
+    def test_returns_none_for_an_empty_ledger(self) -> None:
+        service = _service()
+
+        assert service.get_earliest_transaction_date("user-a") is None
+
+    def test_returns_the_first_day_across_every_account(self) -> None:
+        second = Account(
+            id="acc2",
+            user_id="user-a",
+            name="IRA",
+            institution="Fidelity",
+            account_type=AccountType.IRA,
+        )
+        service = TransactionService(
+            transaction_repo=FakeTransactionRepository(
+                [
+                    self._at(datetime(2026, 3, 4)),
+                    self._at(datetime(2024, 7, 9), account_id="acc2"),
+                    self._at(datetime(2025, 1, 1)),
+                ]
+            ),
+            account_repo=FakeAccountRepository([ACCOUNT, second]),
+            instrument_repo=FakeInstrumentRepository([INSTRUMENT]),
+        )
+
+        assert service.get_earliest_transaction_date("user-a") == date(2024, 7, 9)
+
+    def test_ignores_accounts_owned_by_another_user(self) -> None:
+        service = _service([self._at(datetime(2020, 1, 1))])
+
+        assert service.get_earliest_transaction_date("user-b") is None

@@ -193,6 +193,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/portfolio/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Portfolio Summary */
+        get: operations["get_portfolio_summary_portfolio_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/portfolio/positions": {
         parameters: {
             query?: never;
@@ -340,6 +357,16 @@ export interface components {
          * @enum {string}
          */
         Mode: "point_in_time" | "cumulative" | "delta_per_period";
+        /**
+         * PortfolioSummaryResponse
+         * @description `earliest_transaction_date` is null for a portfolio with no
+         *     transactions at all — there is no history to span, and inventing a
+         *     window would chart a flat line that was never true.
+         */
+        PortfolioSummaryResponse: {
+            /** Earliest Transaction Date */
+            earliest_transaction_date: string | null;
+        };
         /** PositionResponse */
         PositionResponse: {
             /** Account Id */
@@ -822,6 +849,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_portfolio_summary_portfolio_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioSummaryResponse"];
                 };
             };
         };

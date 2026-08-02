@@ -613,6 +613,36 @@ def query_portfolio(
     ]
 
 
+# ─── Portfolio summary ────────────────────────────────────────
+# The facts about a portfolio that are neither a series nor a position:
+# today, just where its history begins. "Max" is defined as "resolved to
+# the earliest transaction" (docs/design/dashboard_v2/behaviour.md
+# § Ranges and granularity) and the client has no way to derive that —
+# the positions endpoint carries no dates, and asking the time-series
+# query would mean already knowing how far back to ask.
+#
+# A route of its own rather than a field bolted onto /portfolio/positions,
+# which returns a list and has nowhere to put one.
+
+
+class PortfolioSummaryResponse(BaseModel):
+    """`earliest_transaction_date` is null for a portfolio with no
+    transactions at all — there is no history to span, and inventing a
+    window would chart a flat line that was never true."""
+
+    earliest_transaction_date: date | None
+
+
+@app.get("/portfolio/summary", response_model=PortfolioSummaryResponse)
+def get_portfolio_summary(
+    current_user: User = Depends(get_current_user),
+    service: TransactionService = Depends(get_transaction_service),
+):
+    return PortfolioSummaryResponse(
+        earliest_transaction_date=service.get_earliest_transaction_date(current_user.id)
+    )
+
+
 # ─── Positions dependencies ───────────────────────────────────
 
 

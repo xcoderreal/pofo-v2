@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date
 
 from myapp.domain.model import Transaction
 from myapp.domain.position import Position, compute_lots, compute_position
@@ -59,6 +60,27 @@ class TransactionService:
         for transaction in transactions:
             self.transaction_repo.add(transaction)
         return transactions
+
+    def get_earliest_transaction_date(self, user_id: str) -> date | None:
+        """The day this user's ledger begins, or None if it is empty.
+
+        This is what the dashboard's "Max" range resolves to
+        (docs/design/dashboard_v2/behaviour.md § Ranges and granularity).
+        The client cannot derive it: the batched positions endpoint
+        returns computed *state*, with no dates on it, and asking the
+        time-series query would require already knowing how far back to
+        ask.
+
+        Scoped by walking the user's own accounts rather than by filtering
+        on `Transaction.user_id` — account ownership is the check every
+        other read here makes, so this cannot disagree with them.
+        """
+        timestamps = [
+            transaction.timestamp
+            for account in self.account_repo.list_by_user(user_id)
+            for transaction in self.transaction_repo.list_by_account(account.id)
+        ]
+        return min(timestamps).date() if timestamps else None
 
     def get_position(
         self, account_id: str, instrument_id: str, user_id: str

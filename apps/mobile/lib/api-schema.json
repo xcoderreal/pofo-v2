@@ -527,6 +527,24 @@
         }
       }
     },
+    "/portfolio/summary": {
+      "get": {
+        "summary": "Get Portfolio Summary",
+        "operationId": "get_portfolio_summary_portfolio_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioSummaryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/portfolio/positions": {
       "get": {
         "summary": "List Positions",
@@ -899,6 +917,28 @@
           "delta_per_period"
         ],
         "title": "Mode"
+      },
+      "PortfolioSummaryResponse": {
+        "properties": {
+          "earliest_transaction_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Transaction Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "earliest_transaction_date"
+        ],
+        "title": "PortfolioSummaryResponse",
+        "description": "`earliest_transaction_date` is null for a portfolio with no\ntransactions at all \u2014 there is no history to span, and inventing a\nwindow would chart a flat line that was never true."
       },
       "PositionResponse": {
         "properties": {

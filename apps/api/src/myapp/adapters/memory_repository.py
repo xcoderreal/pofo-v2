@@ -76,6 +76,9 @@ class MemoryTransactionRepository(TransactionRepository):
             if t.account_id == account_id and t.instrument_id == instrument_id
         ]
 
+    def list_by_account(self, account_id: str) -> list[Transaction]:
+        return [t for t in self._transactions if t.account_id == account_id]
+
     def add(self, transaction: Transaction) -> None:
         self._transactions.append(transaction)
 

@@ -168,6 +168,25 @@ export async function fetchPositions(
   return res.json();
 }
 
+// ─── Portfolio summary ──────────────────────────────────────
+
+export type PortfolioSummary =
+  components["schemas"]["PortfolioSummaryResponse"];
+
+/** Where the portfolio's history begins. The "Max" range resolves to it;
+ * nothing else on the client can derive it (behaviour.md § Ranges and
+ * granularity). Null for a portfolio with no transactions at all. */
+export async function fetchPortfolioSummary(): Promise<PortfolioSummary> {
+  const res = await fetch(`${resolveBase()}/portfolio/summary`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(
+      body.detail ?? `Failed to fetch portfolio summary (${res.status})`,
+    );
+  }
+  return res.json();
+}
+
 // ─── Demo seed ──────────────────────────────────────────────
 
 /** Idempotent — a user who already owns an Account is left alone, so

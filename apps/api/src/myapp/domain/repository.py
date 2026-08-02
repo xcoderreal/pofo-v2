@@ -37,6 +37,9 @@ class TransactionRepository(ABC):
     ) -> list[Transaction]: ...
 
     @abstractmethod
+    def list_by_account(self, account_id: str) -> list[Transaction]: ...
+
+    @abstractmethod
     def add(self, transaction: Transaction) -> None: ...
 
 
