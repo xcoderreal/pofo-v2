@@ -49,6 +49,14 @@ def test_share_count_query_reflects_a_logged_buy(
 
     account_id, instrument_id = _seed_account_and_instrument(http_client)
     http_client.post(
+        "/transactions/deposit",
+        json={
+            "account_id": account_id,
+            "amount": "10000",
+            "timestamp": "2025-12-31T00:00:00",
+        },
+    )
+    http_client.post(
         "/transactions",
         json={
             "account_id": account_id,

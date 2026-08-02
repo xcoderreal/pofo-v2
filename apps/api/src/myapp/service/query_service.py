@@ -65,6 +65,17 @@ def _is_unconstrained(scope: Scope) -> bool:
     return scope is None or scope == "all" or scope == ["all"]
 
 
+# equity/cost_basis/unrealized_gain summed across "all" instruments would
+# double-count: a dollar spent buying an instrument has already left the
+# CASH position (CashService.log_trade's paired leg), so adding CASH's
+# dollar balance back into a portfolio-wide total counts it twice. Only
+# narrows what "all" expands to — an explicit instruments=["cash"] request
+# for one of these metrics is still honored (docs/domain-model.md).
+_EXCLUDES_CASH_FROM_ALL = frozenset(
+    {Metric.EQUITY, Metric.COST_BASIS, Metric.UNREALIZED_GAIN}
+)
+
+
 @dataclass
 class QueryService:
     account_repo: AccountRepository
@@ -101,7 +112,7 @@ class QueryService:
                 "it always targets the CASH instrument"
             )
 
-        instrument_ids = self._resolve_instruments(instruments)
+        instrument_ids = self._resolve_instruments(instruments, metric)
         pairs = self._resolve_pairs(metric, user_id, accounts, instrument_ids)
 
         raw: dict[tuple[str | None, str], Series] = {}
@@ -118,10 +129,13 @@ class QueryService:
 
     # ─── Scope resolution ────────────────────────────────────────
 
-    def _resolve_instruments(self, instruments: Scope) -> list[str]:
-        catalog_ids = {i.id for i in self.instrument_repo.list_all()}
+    def _resolve_instruments(self, instruments: Scope, metric: Metric) -> list[str]:
+        catalog = self.instrument_repo.list_all()
         if _is_unconstrained(instruments):
-            return sorted(catalog_ids)
+            if metric in _EXCLUDES_CASH_FROM_ALL:
+                return sorted(i.id for i in catalog if i.asset_class != AssetClass.CASH)
+            return sorted(i.id for i in catalog)
+        catalog_ids = {i.id for i in catalog}
         return sorted(catalog_ids & set(instruments))
 
     def _resolve_accounts(self, user_id: str, accounts: Scope) -> list[str]:

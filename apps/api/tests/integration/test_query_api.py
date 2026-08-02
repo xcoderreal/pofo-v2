@@ -61,6 +61,14 @@ def _clear_overrides():
 def test_share_count_round_trip(transaction_repo: FakeTransactionRepository) -> None:
     client = _client_as("user-a", transaction_repo)
     client.post(
+        "/transactions/deposit",
+        json={
+            "account_id": "acc1",
+            "amount": "10000",
+            "timestamp": "2025-12-31T00:00:00",
+        },
+    )
+    client.post(
         "/transactions",
         json={
             "account_id": "acc1",

@@ -42,6 +42,18 @@ async function seedAccountAndInstrument(
 test("log a buy and see the position update", async ({ page, request }) => {
   const { account, instrument } = await seedAccountAndInstrument(request);
 
+  // A buy now debits cash automatically — fund the account first. Must be
+  // timezone-aware (like the form's own new Date().toISOString()) — FIFO
+  // sorts this deposit alongside the trade's own timestamp, and Python
+  // can't compare a naive datetime against an aware one.
+  await request.post(`${API}/transactions/deposit`, {
+    data: {
+      account_id: account.id,
+      amount: "10000",
+      timestamp: "2025-12-31T00:00:00Z",
+    },
+  });
+
   await page.goto("/transactions");
   await page.waitForLoadState("networkidle");
 

@@ -58,3 +58,11 @@ class Transaction:
     quantity: Decimal
     price: Decimal
     timestamp: datetime
+    # Set only on the two rows of an auto-paired trade (CashService.log_trade)
+    # — both carry the same value, the primary leg's own id. None for a
+    # standalone transaction (a Deposit/Withdrawal, or any transaction with
+    # no paired counter-entry). This is what lets a paired CASH leg be
+    # correlated back to its trade and filtered out of a raw transaction
+    # list without matching on account/timestamp/amount, which collides on
+    # same-day trades of equal value.
+    trade_id: str | None = None

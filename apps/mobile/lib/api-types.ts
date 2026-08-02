@@ -347,6 +347,8 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
+            /** Trade Id */
+            trade_id: string | null;
         };
         /**
          * TransactionType

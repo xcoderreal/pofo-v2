@@ -36,6 +36,17 @@ def _seed_account_and_instrument(client: httpx.Client) -> tuple[str, str]:
     return account_id, instrument_id
 
 
+def _deposit(client: httpx.Client, account_id: str, amount: str) -> None:
+    client.post(
+        "/transactions/deposit",
+        json={
+            "account_id": account_id,
+            "amount": amount,
+            "timestamp": "2025-12-31T00:00:00",
+        },
+    )
+
+
 def test_log_buy_then_position_reflects_it(
     http_client: httpx.Client, allow_writes: bool
 ) -> None:
@@ -43,6 +54,7 @@ def test_log_buy_then_position_reflects_it(
         pytest.skip("writes disabled for this target (set SKELETON_E2E_ALLOW_WRITES=1)")
 
     account_id, instrument_id = _seed_account_and_instrument(http_client)
+    _deposit(http_client, account_id, "10000")  # funds the buy below
 
     post = http_client.post(
         "/transactions",

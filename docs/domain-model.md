@@ -38,6 +38,8 @@ class Transaction:
 
 **Why `Transaction` has exactly one shape.** A deposit is a `BUY` of the `CASH` `Instrument` (`price = 1`); a withdrawal is a `SELL` of it. There is no second, instrument-less transaction shape — that was considered and rejected during design (see `UBIQUITOUS_LANGUAGE.md`'s "Deposit"/"Withdrawal" entry). `Deposit`/`Withdrawal` exist only as **entrypoints-layer** request labels (`POST /transactions/deposit` reads better than asking a user to pick an instrument called "USD"), translated to a `BUY`/`SELL` of `CASH` before reaching the service layer. This is why cash falls out of the *same* Position computation as every other instrument instead of needing a parallel cash-ledger implementation.
 
+**Ordinary trades post an implicit cash leg, too.** A `BUY` of any non-`CASH` instrument is paired with an automatic `CASH` `SELL` of equal value in the same account (what you paid); a `SELL` pairs with a `CASH` `BUY` (the proceeds) — `CashService.log_trade` writes both atomically via `TransactionService.log_transactions`. This was the intended design from the original `/grill` session (see `UBIQUITOUS_LANGUAGE.md`'s Cash Balance entry — "the implicit cash leg of every non-cash `BUY`/`SELL`"), not a new rule: without it, `cash_balance` only ever means "deposits minus withdrawals I explicitly logged," and a portfolio-wide total (`equity + cash_balance`) double-counts every dollar spent on a trade, since it never left the `CASH` position. Insufficient cash for a trade isn't a distinct concept — the paired `CASH` `SELL` goes through the identical FIFO overdraw check as selling too many shares of any other instrument, and raises the same `InsufficientSharesError`. There is no margin/negative-cash mode.
+
 **Why no `Position` or `Lot` dataclass is persisted.** Both are *computed* from `Transaction` history — see "Computed, not stored" below. Storing them would create a second source of truth that can drift from the ledger; the ledger is the only durable fact.
 
 ## Computed, not stored: Lot, Position, gains
@@ -118,6 +120,10 @@ Every metric is a `Level` (meaningful at an instant) or a `Flow` (meaningful onl
 The service validates `(metric, mode)` against this table and rejects invalid pairs (400), rather than silently computing something meaningless. "How much did equity change this month" is answered by two `point_in_time` samples differenced client-side — not a new mode.
 
 `accounts` is meaningless for `market_price` (no account dimension); the service rejects that combination explicitly rather than silently ignoring it.
+
+`instruments` is meaningless for `cash_balance` — it always targets the `CASH` instrument — and an explicit filter is rejected the same way, for the same reason.
+
+**`instruments="all"` excludes `CASH` for `equity`, `cost_basis`, and `unrealized_gain`.** These are summed-dollar metrics: since an ordinary trade now moves money *out of* the `CASH` position and *into* the traded instrument's cost basis (see above), including `CASH` in a portfolio-wide `equity`/`cost_basis` total would double-count every dollar currently invested. `share_count`, `cash_balance`, and `market_price` are unaffected — the double-counting problem is specific to summed dollar totals, not to a per-instrument breakdown. This only narrows what `"all"` expands to; an explicit `instruments=["cash"]` request for one of these metrics is still answered (trivially, since `CASH`'s cost basis always equals its share count).
 
 ### Result shape
 

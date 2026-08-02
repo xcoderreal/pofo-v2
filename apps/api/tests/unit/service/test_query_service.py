@@ -625,3 +625,123 @@ class TestScopeResolution:
         )
 
         assert result == []
+
+
+class TestAllScopeExcludesCashForDollarMetrics:
+    """equity/cost_basis/unrealized_gain summed across "all" instruments
+    would otherwise double-count: a dollar spent buying GOOG has already
+    left the CASH position (CashService.log_trade's paired leg), so
+    adding CASH's dollar balance back into a portfolio-wide equity total
+    counts it twice. share_count/cash_balance/market_price are unaffected
+    — the double-counting problem is specific to summed dollar totals."""
+
+    def _funded_goog_transactions(self) -> list[Transaction]:
+        return [
+            _buy("t1", "acc1", CASH_INSTRUMENT_ID, "10000", "1", (2026, 1, 1)),
+            _buy("t2", "acc1", "goog", "10", "100", (2026, 1, 2)),
+        ]
+
+    def test_equity_all_scope_excludes_cash(self) -> None:
+        source = FakePriceSource(
+            {"GOOG": [PriceBar(date=D(2026, 1, 5), close=Decimal("120"))]}
+        )
+        service = _service(
+            transactions=self._funded_goog_transactions(), price_source=source
+        )
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.EQUITY,
+            instruments="all",
+            accounts=["acc1"],
+            group_by=GroupBy.INSTRUMENT,
+            start=D(2026, 1, 1),
+            end=D(2026, 1, 10),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        groups = {s.group for s in result}
+        assert groups == {"goog"}  # no "cash" group at all
+
+    def test_cost_basis_all_scope_excludes_cash(self) -> None:
+        service = _service(transactions=self._funded_goog_transactions())
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.COST_BASIS,
+            instruments="all",
+            accounts=["acc1"],
+            group_by=GroupBy.INSTRUMENT,
+            start=D(2026, 1, 1),
+            end=D(2026, 1, 10),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        groups = {s.group for s in result}
+        assert groups == {"goog"}
+
+    def test_unrealized_gain_all_scope_excludes_cash(self) -> None:
+        source = FakePriceSource(
+            {"GOOG": [PriceBar(date=D(2026, 1, 5), close=Decimal("120"))]}
+        )
+        service = _service(
+            transactions=self._funded_goog_transactions(), price_source=source
+        )
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.UNREALIZED_GAIN,
+            instruments="all",
+            accounts=["acc1"],
+            group_by=GroupBy.INSTRUMENT,
+            start=D(2026, 1, 1),
+            end=D(2026, 1, 10),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        groups = {s.group for s in result}
+        assert groups == {"goog"}
+
+    def test_share_count_all_scope_still_includes_cash(self) -> None:
+        """The exclusion is specific to summed-dollar metrics — a
+        breakdown by instrument has no double-counting problem."""
+        service = _service(transactions=self._funded_goog_transactions())
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.SHARE_COUNT,
+            instruments="all",
+            accounts=["acc1"],
+            group_by=GroupBy.INSTRUMENT,
+            start=D(2026, 1, 1),
+            end=D(2026, 1, 10),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        groups = {s.group for s in result}
+        assert groups == {"goog", CASH_INSTRUMENT_ID}
+
+    def test_an_explicit_cash_request_for_equity_is_still_honored(self) -> None:
+        """The exclusion only narrows what "all" expands to — an
+        explicit ask for CASH's own equity is still a well-defined,
+        answerable query (trivially == cash_balance, since price is
+        always 1)."""
+        service = _service(transactions=self._funded_goog_transactions())
+
+        result = service.query_timeseries(
+            user_id="user-a",
+            metric=Metric.EQUITY,
+            instruments=[CASH_INSTRUMENT_ID],
+            accounts=["acc1"],
+            group_by=GroupBy.NONE,
+            start=D(2026, 1, 1),
+            end=D(2026, 1, 1),
+            granularity=Granularity.DAILY,
+            mode=Mode.POINT_IN_TIME,
+        )
+
+        assert result[0].points[0].value == Decimal("10000")

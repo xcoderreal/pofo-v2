@@ -137,6 +137,107 @@ class TestLogTransaction:
             service.log_transaction(transaction)
 
 
+def _sell(
+    quantity: str, price: str = "100", instrument_id: str = "goog"
+) -> Transaction:
+    return Transaction(
+        id="t2",
+        user_id="user-a",
+        account_id="acc1",
+        instrument_id=instrument_id,
+        type=TransactionType.SELL,
+        quantity=Decimal(quantity),
+        price=Decimal(price),
+        timestamp=datetime(2026, 1, 2),
+    )
+
+
+class TestLogTransactions:
+    """The batch primitive log_transaction is a thin wrapper over — each
+    transaction validates independently against its own (account,
+    instrument) ledger, and the whole batch persists atomically (all or
+    nothing). This is what lets a caller (e.g. CashService, pairing a
+    trade with its cash leg) log two transactions for different
+    instruments as a single unit."""
+
+    def test_logs_multiple_transactions_for_different_instruments_atomically(
+        self,
+    ) -> None:
+        instrument_repo = FakeInstrumentRepository(
+            [
+                INSTRUMENT,
+                Instrument(
+                    id="cash", symbol="USD", name="Cash", asset_class=AssetClass.CASH
+                ),
+            ]
+        )
+        existing_deposit = Transaction(
+            id="deposit1",
+            user_id="user-a",
+            account_id="acc1",
+            instrument_id="cash",
+            type=TransactionType.BUY,
+            quantity=Decimal("5000"),
+            price=Decimal("1"),
+            timestamp=datetime(2025, 12, 31),
+        )
+        service = TransactionService(
+            transaction_repo=FakeTransactionRepository([existing_deposit]),
+            account_repo=FakeAccountRepository([ACCOUNT]),
+            instrument_repo=instrument_repo,
+        )
+        goog_buy = _buy("10")  # $1000 @ $100
+        cash_sell = _sell("1000", price="1", instrument_id="cash")  # pays for it
+
+        result = service.log_transactions([goog_buy, cash_sell])
+
+        assert result == [goog_buy, cash_sell]
+        assert service.get_position("acc1", "goog", user_id="user-a").share_count == (
+            Decimal("10")
+        )
+        assert service.get_position("acc1", "cash", user_id="user-a").share_count == (
+            Decimal("4000")
+        )
+
+    def test_a_failure_in_one_transaction_persists_neither(self) -> None:
+        """Atomicity: if the SECOND transaction in the batch is invalid,
+        the first must not have been written either — otherwise a trade
+        could end up with its instrument leg logged but its cash leg
+        silently dropped."""
+        instrument_repo = FakeInstrumentRepository(
+            [
+                INSTRUMENT,
+                Instrument(
+                    id="cash", symbol="USD", name="Cash", asset_class=AssetClass.CASH
+                ),
+            ]
+        )
+        transaction_repo = FakeTransactionRepository()
+        service = TransactionService(
+            transaction_repo=transaction_repo,
+            account_repo=FakeAccountRepository([ACCOUNT]),
+            instrument_repo=instrument_repo,
+        )
+        goog_buy = _buy("10")
+        # Overdraws cash — nothing has ever been deposited.
+        invalid_cash_sell = _sell("1000000", price="1", instrument_id="cash")
+
+        with pytest.raises(InsufficientSharesError):
+            service.log_transactions([goog_buy, invalid_cash_sell])
+
+        assert transaction_repo.list_by_account_instrument("acc1", "goog") == []
+
+    def test_log_transaction_is_a_single_item_batch(self) -> None:
+        service = _service()
+
+        result = service.log_transaction(_buy("10"))
+
+        assert result == _buy("10")
+        assert service.get_position("acc1", "goog", user_id="user-a").share_count == (
+            Decimal("10")
+        )
+
+
 class TestGetPosition:
     def test_returns_none_for_an_account_owned_by_another_user(self) -> None:
         service = _service([_buy("10")])

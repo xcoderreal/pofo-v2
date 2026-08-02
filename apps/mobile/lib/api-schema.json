@@ -899,6 +899,17 @@
             "type": "string",
             "format": "date-time",
             "title": "Timestamp"
+          },
+          "trade_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Id"
           }
         },
         "type": "object",
@@ -909,7 +920,8 @@
           "type",
           "quantity",
           "price",
-          "timestamp"
+          "timestamp",
+          "trade_id"
         ],
         "title": "TransactionResponse"
       },

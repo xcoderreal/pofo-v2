@@ -70,8 +70,20 @@ def _buy_payload(**overrides: object) -> dict:
     return payload
 
 
+def _deposit(client: TestClient, amount: str = "10000", account_id: str = "acc1"):
+    client.post(
+        "/transactions/deposit",
+        json={
+            "account_id": account_id,
+            "amount": amount,
+            "timestamp": "2025-12-31T00:00:00",
+        },
+    )
+
+
 def test_log_buy_then_position_reflects_it(transaction_repo: FakeTransactionRepository):
     client = _client_as("user-a", transaction_repo)
+    _deposit(client)  # funds the buy below — a trade now debits cash
 
     post = client.post("/transactions", json=_buy_payload())
     assert post.status_code == 201
@@ -102,6 +114,7 @@ def test_selling_more_than_held_returns_409(
     transaction_repo: FakeTransactionRepository,
 ):
     client = _client_as("user-a", transaction_repo)
+    _deposit(client)
     client.post("/transactions", json=_buy_payload(quantity="5"))
 
     resp = client.post(
@@ -145,7 +158,9 @@ def test_transaction_against_nonexistent_instrument_returns_404(
 def test_position_for_another_users_account_returns_404(
     transaction_repo: FakeTransactionRepository,
 ):
-    _client_as("user-a", transaction_repo).post("/transactions", json=_buy_payload())
+    setup_client = _client_as("user-a", transaction_repo)
+    _deposit(setup_client)
+    setup_client.post("/transactions", json=_buy_payload())
 
     client_b = _client_as("user-b", transaction_repo)
     resp = client_b.get("/accounts/acc1/instruments/goog/position")

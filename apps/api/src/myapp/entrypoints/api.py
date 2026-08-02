@@ -307,6 +307,15 @@ def get_transaction_service(
     )
 
 
+def get_cash_service(
+    transaction_service: TransactionService = Depends(get_transaction_service),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
+) -> CashService:
+    return CashService(
+        transaction_service=transaction_service, instrument_service=instrument_service
+    )
+
+
 # ─── Transaction schemas ────────────────────────────────────────
 
 
@@ -327,6 +336,7 @@ class TransactionResponse(BaseModel):
     quantity: Decimal
     price: Decimal
     timestamp: datetime
+    trade_id: str | None
 
 
 class PositionResponse(BaseModel):
@@ -345,19 +355,23 @@ def _to_transaction_response(transaction: Transaction) -> TransactionResponse:
         quantity=transaction.quantity,
         price=transaction.price,
         timestamp=transaction.timestamp,
+        trade_id=transaction.trade_id,
     )
 
 
 # ─── Transaction routes ─────────────────────────────────────────
 # Transaction ids are server-generated (uuid4) — unlike Instrument/Account,
 # a ledger entry has no natural client-chosen identity to deduplicate on.
+# Goes through CashService.log_trade, not TransactionService.log_transaction
+# directly, so a non-cash BUY/SELL is automatically paired with its CASH
+# leg (docs/domain-model.md; UBIQUITOUS_LANGUAGE.md's Cash Balance entry).
 
 
 @app.post("/transactions", response_model=TransactionResponse, status_code=201)
 def create_transaction(
     request: CreateTransactionRequest,
     current_user: User = Depends(get_current_user),
-    service: TransactionService = Depends(get_transaction_service),
+    service: CashService = Depends(get_cash_service),
 ):
     transaction = Transaction(
         id=str(uuid.uuid4()),
@@ -370,7 +384,7 @@ def create_transaction(
         timestamp=request.timestamp,
     )
     try:
-        service.log_transaction(transaction)
+        service.log_trade(transaction)
     except (AccountNotFoundError, InstrumentNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except InsufficientSharesError as exc:
@@ -396,18 +410,6 @@ def get_position(
         instrument_id=position.instrument_id,
         share_count=position.share_count,
         cost_basis=position.cost_basis,
-    )
-
-
-# ─── Cash dependencies ──────────────────────────────────────────
-
-
-def get_cash_service(
-    transaction_service: TransactionService = Depends(get_transaction_service),
-    instrument_service: InstrumentService = Depends(get_instrument_service),
-) -> CashService:
-    return CashService(
-        transaction_service=transaction_service, instrument_service=instrument_service
     )
 
 
