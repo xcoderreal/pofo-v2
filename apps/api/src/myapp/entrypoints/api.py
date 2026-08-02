@@ -39,6 +39,7 @@ from myapp.domain.repository import (
 from myapp.service.account_service import AccountService
 from myapp.service.account_service import DuplicateIdError as AccountDuplicateIdError
 from myapp.service.cash_service import CashService
+from myapp.service.demo_seed_service import DemoSeedService
 from myapp.service.instrument_service import (
     DuplicateIdError as InstrumentDuplicateIdError,
 )
@@ -452,6 +453,37 @@ def deposit(
     except AccountNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _to_transaction_response(transaction)
+
+
+# ─── Demo seed ───────────────────────────────────────────────────
+# Called by the client once on launch. Idempotent: a user who already
+# owns any Account is left alone, so this is safe to call every session
+# and there is nothing for the user to press. It's a POST rather than a
+# side effect on GET /me because it writes.
+
+
+def get_demo_seed_service(
+    account_service: AccountService = Depends(get_account_service),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
+    cash_service: CashService = Depends(get_cash_service),
+) -> DemoSeedService:
+    return DemoSeedService(
+        account_service=account_service,
+        instrument_service=instrument_service,
+        cash_service=cash_service,
+    )
+
+
+class DemoSeedResponse(BaseModel):
+    seeded: bool
+
+
+@app.post("/demo/seed", response_model=DemoSeedResponse)
+def seed_demo_portfolio(
+    current_user: User = Depends(get_current_user),
+    service: DemoSeedService = Depends(get_demo_seed_service),
+):
+    return DemoSeedResponse(seeded=service.ensure_seeded(current_user.id))
 
 
 @app.post("/transactions/withdraw", response_model=TransactionResponse, status_code=201)

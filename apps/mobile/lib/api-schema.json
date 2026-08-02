@@ -346,6 +346,24 @@
         }
       }
     },
+    "/demo/seed": {
+      "post": {
+        "summary": "Seed Demo Portfolio",
+        "operationId": "seed_demo_portfolio_demo_seed_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoSeedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/transactions/withdraw": {
       "post": {
         "summary": "Withdraw",
@@ -682,6 +700,19 @@
           "timestamp"
         ],
         "title": "CreateTransactionRequest"
+      },
+      "DemoSeedResponse": {
+        "properties": {
+          "seeded": {
+            "type": "boolean",
+            "title": "Seeded"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seeded"
+        ],
+        "title": "DemoSeedResponse"
       },
       "DepositRequest": {
         "properties": {
