@@ -13,9 +13,16 @@
  */
 
 import type { ChartPoint } from "./chart";
+import {
+  chartMode,
+  clampSelection,
+  IDLE_SELECTION,
+  type ChartSelection,
+} from "./chartInteraction";
 import type { Level, ListTab } from "./drilldown";
 import { formatPercent } from "./format";
 import {
+  flowBetween,
   flowTotal,
   formatMetricValue,
   formatSignedMetric,
@@ -26,7 +33,10 @@ import { changePercent, type SeriesResponse } from "./positions";
 import {
   autoGranularity,
   bucketCountLabel,
+  bucketNoun,
   fromApiDate,
+  pointDateLabel,
+  rangeLabel,
   resolveRange,
   toApiDate,
   validGranularities,
@@ -138,12 +148,29 @@ export interface Headline {
   /** The line beneath it: a signed change plus percentage for a Level,
    * or the bucket count for the one Flow. */
   delta: string;
+  /**
+   * What the delta is measured over — the range's name at rest, and the
+   * scrubbed point's date or the compared pair's dates while the chart is
+   * being read (behaviour.md § Chart).
+   *
+   * The screen used to derive this from `range.key` itself. It moved here
+   * because the delta and the thing it is measured over have to change
+   * together: a caption still reading "past year" beside a delta that is
+   * now "January → March" is worse than either alone.
+   */
+  caption: string;
   /** Which way it went — the accent colour's only input. */
   rising: boolean;
 }
 
 /**
  * The headline figure and its sub-line.
+ *
+ * With nothing selected this is the range's own summary. A scrub, a pin
+ * or a compare replaces it with that point's or that pair's figures —
+ * which is what makes the chart readable without leaving the screen
+ * (behaviour.md § Chart). `selection` defaults to idle so the resting
+ * case reads as one call, not as an opt-out.
  *
  * `realized_gain` is the only Flow: its figure is the total booked across
  * the visible range and its sub-line reports the bucket count, because a
@@ -161,15 +188,104 @@ export function buildHeadline(args: {
   cumulative: boolean;
   points: readonly ChartPoint[];
   granularity: Granularity;
+  rangeKey: RangeKey;
+  selection?: ChartSelection;
 }): Headline {
-  const { metric, cumulative, points, granularity } = args;
+  const { metric, cumulative, points, granularity, rangeKey } = args;
   const values = points.map((point) => point.value);
+  const flow = metricKind(metric) === "flow";
 
-  if (metricKind(metric) === "flow") {
+  // Indices are only meaningful against the series they were taken from,
+  // and a refetch can shorten it under a live pin.
+  const selection = clampSelection(args.selection ?? IDLE_SELECTION, points.length);
+  const mode = chartMode(selection);
+  const label = (index: number) =>
+    pointDateLabel(points[index].timestamp, granularity);
+
+  if (mode === "compare" && selection.pinA !== null && selection.pinB !== null) {
+    // Sorted, so the delta always reads later-minus-earlier however the
+    // two pins were tapped: an A→B change that flipped sign depending on
+    // tap order would be describing the chart backwards half the time.
+    const lo = Math.min(selection.pinA, selection.pinB);
+    const hi = Math.max(selection.pinA, selection.pinB);
+    const span = `${label(lo)} → ${label(hi)}`;
+
+    if (flow) {
+      const booked = flowBetween(values, lo, hi, cumulative);
+      return {
+        value: formatSignedMetric(metric, booked),
+        delta: `booked over ${bucketCountLabel(hi - lo + 1, granularity)}`,
+        caption: span,
+        rising: booked >= 0,
+      };
+    }
+    const change = values[hi] - values[lo];
+    const percent = changePercent(values[lo], values[hi]);
+    return {
+      // The chronologically later point, not the second one tapped. The
+      // prototype shows B's value while labelling the pair in date order,
+      // so tapping right-to-left gave it a figure from the *start* of the
+      // span it had just captioned.
+      value: formatMetricValue(metric, values[hi]),
+      delta: `${formatSignedMetric(metric, change)}${
+        percent === null ? "" : `  ${formatPercent(percent)}`
+      }`,
+      caption: span,
+      rising: change >= 0,
+    };
+  }
+
+  const index = mode === "scrub" ? selection.scrubIndex : selection.pinA;
+  if (index !== null) {
+    const suffix =
+      mode === "pinned" ? " · pinned · tap another point to compare" : "";
+
+    if (flow) {
+      // No "vs prev" and no "from start" for a Flow. Both are differences
+      // between two independent bucket amounts, which is the comparison
+      // behaviour.md § Metrics rules out for the headline percentage — the
+      // bucket's own booking, and what kind of bucket it is, is the whole
+      // honest readout for a single point.
+      return {
+        value: formatSignedMetric(metric, values[index]),
+        delta: cumulative
+          ? "booked to date"
+          : `booked this ${bucketNoun(granularity)}`,
+        caption: `${label(index)}${suffix}`,
+        rising: values[index] >= 0,
+      };
+    }
+
+    const fromStart = values[index] - values[0];
+    if (mode === "pinned") {
+      return {
+        value: formatMetricValue(metric, values[index]),
+        delta: formatSignedMetric(metric, fromStart),
+        caption: `${label(index)}${suffix}`,
+        rising: fromStart >= 0,
+      };
+    }
+    // Scrubbing: the near-term move is what the finger is chasing, so
+    // that leads and the range-start comparison rides in the caption.
+    const previous = index > 0 ? values[index - 1] : values[0];
+    const change = values[index] - previous;
+    return {
+      value: formatMetricValue(metric, values[index]),
+      delta: `${formatSignedMetric(metric, change)} vs prev`,
+      caption: `${label(index)} · ${formatSignedMetric(
+        metric,
+        fromStart,
+      )} from start`,
+      rising: change >= 0,
+    };
+  }
+
+  if (flow) {
     const booked = flowTotal(values, cumulative);
     return {
       value: formatSignedMetric(metric, booked),
       delta: bucketCountLabel(points.length, granularity),
+      caption: rangeLabel(rangeKey),
       rising: booked >= 0,
     };
   }
@@ -184,6 +300,7 @@ export function buildHeadline(args: {
     delta: `${formatSignedMetric(metric, change)}${
       percent === null ? "" : `  ${formatPercent(percent)}`
     }`,
+    caption: rangeLabel(rangeKey),
     rising: change >= 0,
   };
 }

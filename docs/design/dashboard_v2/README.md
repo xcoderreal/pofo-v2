@@ -70,4 +70,6 @@ places. Follow the docs, not the prototype:
 | Matrix capped at 7 × 4 | Every held instrument; every account holding one |
 | Row % is lifetime, header % is range | Both range-scoped; `—` when there's no denominator |
 | Realized gain is bars per-period, a line cumulative | Bars in both modes — [`behaviour.md`](behaviour.md) § Metrics says "bars, not a line" of the metric, not of one mode |
+| A→B compare takes its headline figure from `pinB` literally, while captioning the pair in date order | The chronologically later point, so a right-to-left pair doesn't headline the *start* of the span it just captioned |
+| A→B compare on realized gain subtracts one bucket from the other | The total booked between the pins — the same reason [`behaviour.md`](behaviour.md) § Metrics refuses a Flow a percentage |
 | Search is client-side over mock data | Same grammar, real endpoints |

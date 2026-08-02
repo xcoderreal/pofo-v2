@@ -50,6 +50,45 @@ export function pointXs(points: ChartPoint[], width: number): number[] {
 }
 
 /**
+ * Which point the pointer is over, resolved against **real timestamps**.
+ *
+ * The inverse of `pointXs`, and the whole reason that function exists
+ * separately: the query interface returns sparse, real-timestamped points
+ * and deliberately does not gap-pad non-trading days, so the prototype's
+ * `Math.round(fraction * (n - 1))` misplaces every point after a gap
+ * (behaviour.md § Chart). A series of six monthly points and one in
+ * December resolves the middle of the chart to *June*, which is where the
+ * sixth point is drawn — index arithmetic answers April.
+ *
+ * Nearest wins outright, with no hit radius: the pointer is always
+ * somewhere, and a gesture that resolved to nothing over a gap would make
+ * a sparse series feel broken rather than sparse. Ties go to the earlier
+ * point, which only matters when the pointer lands exactly between two.
+ *
+ * Reads one array and knows nothing about line vs. bars, which is what
+ * lets the same resolver serve both renderings.
+ */
+export function nearestPointIndex(
+  points: ChartPoint[],
+  width: number,
+  x: number,
+): number | null {
+  if (points.length === 0) return null;
+
+  const xs = pointXs(points, width);
+  let best = 0;
+  let bestDistance = Math.abs(xs[0] - x);
+  for (let i = 1; i < xs.length; i++) {
+    const distance = Math.abs(xs[i] - x);
+    if (distance < bestDistance) {
+      best = i;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
  * Vertical projection for a set of values.
  *
  * `includeZero` widens the domain to contain the baseline. Bars need it —
@@ -75,6 +114,26 @@ function valueScale(
   }
   return (value) =>
     height - PAD_Y - ((value - min) / (max - min)) * (height - PAD_Y * 2);
+}
+
+/**
+ * Where each point sits vertically in the **line** rendering.
+ *
+ * The counterpart to `pointXs` for the overlay: a crosshair dot has to
+ * land on the vertex it is marking, and re-deriving the scale in the
+ * component is how the dot ends up a few pixels off the line the day the
+ * padding changes. Bars have no single y to mark — their marker is a
+ * full-height rule — so this deliberately covers the line case only, and
+ * so does not take `includeZero`.
+ */
+export function pointYs(points: ChartPoint[], height: number): number[] {
+  if (points.length === 0) return [];
+  const y = valueScale(
+    points.map((p) => p.value),
+    height,
+    false,
+  );
+  return points.map((p) => y(p.value));
 }
 
 export function buildPath(

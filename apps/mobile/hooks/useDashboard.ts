@@ -1,11 +1,19 @@
 import { useMemo } from "react";
 import { useAccounts } from "@/hooks/useAccounts";
+import {
+  useChartSelection,
+  type ChartGestureHandlers,
+} from "@/hooks/useChartSelection";
 import { useInstruments } from "@/hooks/useInstruments";
 import { usePortfolioSeries } from "@/hooks/usePortfolio";
 import { usePortfolioSummary } from "@/hooks/usePortfolioSummary";
 import { usePositions } from "@/hooks/usePositions";
 import { buildAccountOptions, type AccountOption } from "@/lib/accounts";
 import type { ChartPoint } from "@/lib/chart";
+import {
+  selectionResetKey,
+  type ChartSelection,
+} from "@/lib/chartInteraction";
 import {
   buildHeadline,
   firstError,
@@ -47,6 +55,12 @@ const CASH_ROW_THRESHOLD = 1;
 export interface DashboardChart {
   points: ChartPoint[];
   headline: Headline;
+  /** What the pointer has scrubbed or pinned (#15). */
+  selection: ChartSelection;
+  /** The line under the chart, describing the mode in force. */
+  hint: string;
+  /** Spread onto `PortfolioChart` to make it interactive. */
+  gestureHandlers: ChartGestureHandlers;
   isPending: boolean;
   errorMessage: string | null;
 }
@@ -89,8 +103,17 @@ export interface Dashboard {
  * the page — and the page being thin is the point. The per-resource
  * hooks it composes (`usePositions`, `usePortfolioSeries`, …) stay
  * exactly as they are and remain usable on their own.
+ *
+ * `chartWidth` is the one piece of layout that reaches in here, and it
+ * has to: the chart's nearest-point resolution is a pointer x measured
+ * against the projection the chart was drawn with, so the readout cannot
+ * be computed without knowing how wide that was.
  */
-export function useDashboard(state: ViewState, level: Level): Dashboard {
+export function useDashboard(
+  state: ViewState,
+  level: Level,
+  chartWidth: number,
+): Dashboard {
   // A single "today" for the render, so the resolved range and every
   // label derived from it agree with each other.
   const today = useMemo(() => new Date(), []);
@@ -274,6 +297,17 @@ export function useDashboard(state: ViewState, level: Level): Dashboard {
     cashValue !== null && Math.abs(cashValue) >= CASH_ROW_THRESHOLD;
 
   const points = useMemo(() => toChartPoints(series.data), [series.data]);
+
+  // Every input the selection is only meaningful against — changing any
+  // of them clears pins and any live scrub (behaviour.md § Chart). One
+  // key rather than a `clear()` call in each of the handlers that can
+  // change one of them.
+  const interaction = useChartSelection({
+    points,
+    width: chartWidth,
+    resetKey: selectionResetKey(state),
+  });
+
   const headline = useMemo(
     () =>
       buildHeadline({
@@ -281,8 +315,17 @@ export function useDashboard(state: ViewState, level: Level): Dashboard {
         cumulative: state.cumulative,
         points,
         granularity: range.granularity,
+        rangeKey: range.key,
+        selection: interaction.selection,
       }),
-    [state.metric, state.cumulative, points, range.granularity],
+    [
+      state.metric,
+      state.cumulative,
+      points,
+      range.granularity,
+      range.key,
+      interaction.selection,
+    ],
   );
 
   // ─── Pending / error, per level ─────────────────────────────
@@ -344,6 +387,9 @@ export function useDashboard(state: ViewState, level: Level): Dashboard {
     chart: {
       points,
       headline,
+      selection: interaction.selection,
+      hint: interaction.hint,
+      gestureHandlers: interaction.handlers,
       isPending: series.isPending,
       errorMessage: series.isError ? series.error.message : null,
     },

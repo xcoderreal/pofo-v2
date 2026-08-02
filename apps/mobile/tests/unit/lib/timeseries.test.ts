@@ -5,8 +5,10 @@ import {
   bucketNoun,
   buildGranularityOptions,
   fromApiDate,
+  GRANULARITIES,
   isGranularityValid,
   parseCustomRange,
+  pointDateLabel,
   rangeLabel,
   resolveRange,
   toApiDate,
@@ -326,5 +328,24 @@ describe("bucketCountLabel", () => {
 
   test("no buckets is plural", () => {
     expect(bucketCountLabel(0, "daily")).toBe("0 day buckets");
+  });
+});
+
+describe("pointDateLabel", () => {
+  const date = new Date("2026-03-09T00:00:00");
+
+  test("a label never claims more precision than its bucket has", () => {
+    // A monthly point written "Mar 9, 2026" reads as if the month's whole
+    // figure happened on the 9th.
+    expect(pointDateLabel(date, "daily")).toBe("Mar 9, 2026");
+    expect(pointDateLabel(date, "weekly")).toBe("Week of Mar 9");
+    expect(pointDateLabel(date, "monthly")).toBe("Mar 2026");
+    expect(pointDateLabel(date, "yearly")).toBe("2026");
+  });
+
+  test("every granularity produces something", () => {
+    for (const granularity of GRANULARITIES) {
+      expect(pointDateLabel(date, granularity).length).toBeGreaterThan(0);
+    }
   });
 });

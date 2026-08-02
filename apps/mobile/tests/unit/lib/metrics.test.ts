@@ -10,6 +10,7 @@ import {
 import {
   buildMetricOptions,
   defaultRangeForMetric,
+  flowBetween,
   flowTotal,
   formatMetricValue,
   formatSignedMetric,
@@ -448,5 +449,52 @@ describe("defaultRangeForMetric", () => {
 
     expect(opinionated).toEqual(["realized_gain"]);
     expect(opinionated.map(metricKind)).toEqual(["flow"]);
+  });
+});
+
+describe("flowBetween", () => {
+  test("per-period sums the window, both ends included", () => {
+    expect(flowBetween([300, -100, 500, 200], 1, 3, false)).toBe(600);
+  });
+
+  test("cumulative reaches the same figure from running totals", () => {
+    // The same gains described two ways, so a window's total must not
+    // depend on which mode the chart is in.
+    const perPeriod = [300, -100, 500, 200];
+    const running = [300, 200, 700, 900];
+
+    for (const [lo, hi] of [
+      [0, 3],
+      [0, 0],
+      [1, 3],
+      [2, 2],
+      [1, 2],
+    ]) {
+      expect(flowBetween(running, lo, hi, true)).toBe(
+        flowBetween(perPeriod, lo, hi, false),
+      );
+    }
+  });
+
+  test("a window from the first bucket is the same as flowTotal over it", () => {
+    const perPeriod = [300, -100, 500, 200];
+
+    expect(flowBetween(perPeriod, 0, 3, false)).toBe(flowTotal(perPeriod, false));
+  });
+
+  test("the two pins may arrive in either order", () => {
+    expect(flowBetween([300, -100, 500], 2, 0, false)).toBe(
+      flowBetween([300, -100, 500], 0, 2, false),
+    );
+  });
+
+  test("one bucket is its own booking", () => {
+    expect(flowBetween([300, -100, 500], 1, 1, false)).toBe(-100);
+    expect(flowBetween([300, 200, 700], 1, 1, true)).toBe(-100);
+  });
+
+  test("indices outside the series are clamped rather than read", () => {
+    expect(flowBetween([300, -100], 0, 9, false)).toBe(200);
+    expect(flowBetween([], 0, 3, false)).toBe(0);
   });
 });

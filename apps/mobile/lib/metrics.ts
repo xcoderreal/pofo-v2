@@ -90,6 +90,40 @@ export function flowTotal(values: readonly number[], cumulative: boolean): numbe
 }
 
 /**
+ * What a Flow booked across a *slice* of the visible range — buckets `lo`
+ * through `hi`, both included.
+ *
+ * The A→B compare's answer for `realized_gain` (#15). A Level's compare
+ * is `value(B) − value(A)`, but subtracting one flow bucket from another
+ * asks "how much more did March book than January", which is the same
+ * meaningless comparison behaviour.md refuses a percentage for. What the
+ * two pins actually delimit is a *window*, and the honest figure for a
+ * window of a flow is the total booked inside it.
+ *
+ * Both modes reach the same number, exactly as `flowTotal` does: summing
+ * per-period buckets, or taking the difference of the running totals
+ * either side of the window. `lo - 1` rather than `lo` is what makes the
+ * cumulative branch inclusive of A's own bucket, so the two modes agree
+ * for the same pair of pins.
+ */
+export function flowBetween(
+  values: readonly number[],
+  lo: number,
+  hi: number,
+  cumulative: boolean,
+): number {
+  if (values.length === 0) return 0;
+  const low = Math.max(0, Math.min(lo, hi));
+  const high = Math.min(values.length - 1, Math.max(lo, hi));
+  if (cumulative) {
+    return values[high] - (low > 0 ? values[low - 1] : 0);
+  }
+  let total = 0;
+  for (let i = low; i <= high; i++) total += values[i];
+  return total;
+}
+
+/**
  * The range a metric wants when it is selected from search (#26).
  *
  * `null` means "keep whatever range is showing" — which is every metric

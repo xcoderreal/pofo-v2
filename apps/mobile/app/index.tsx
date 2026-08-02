@@ -39,7 +39,6 @@ import {
 import {
   buildGranularityOptions,
   RANGE_KEYS,
-  rangeLabel,
   type Granularity,
 } from "@/lib/timeseries";
 import { signalColors } from "@/utils/theme";
@@ -88,7 +87,7 @@ export default function PortfolioScreen() {
   const { state, level } = view;
   const [sheet, setSheet] = useState<SheetKind | null>(null);
 
-  const dashboard = useDashboard(state, level);
+  const dashboard = useDashboard(state, level, chartWidth);
   const { range, chart, lists } = dashboard;
   const isFlow = metricKind(state.metric) === "flow";
 
@@ -276,7 +275,7 @@ export default function PortfolioScreen() {
                 {chart.headline.delta}
               </Text>
               <Text testID="range-label" style={styles.rangeLabel}>
-                {rangeLabel(range.key)}
+                {chart.headline.caption}
               </Text>
             </View>
 
@@ -285,7 +284,16 @@ export default function PortfolioScreen() {
               points={chart.points}
               width={chartWidth}
               variant={isFlow ? "bars" : "line"}
+              selection={chart.selection}
+              gestureHandlers={chart.gestureHandlers}
             />
+
+            {/* Reflects the mode rather than repeating one instruction —
+                it is the only thing on screen that says a second tap
+                compares (behaviour.md § Chart). */}
+            <Text testID="chart-hint" style={styles.hint}>
+              {chart.hint}
+            </Text>
           </>
         )}
 
@@ -530,6 +538,12 @@ function makeStyles(theme: ReturnType<typeof useTheme>) {
       marginBottom: theme.spacing.lg,
     },
     delta: { fontSize: theme.fontSize.lg, fontWeight: "500" },
+    hint: {
+      color: theme.colors.textTertiary,
+      fontSize: theme.fontSize.xs,
+      paddingHorizontal: theme.spacing.lg,
+      marginTop: theme.spacing.sm,
+    },
     rangeLabel: {
       color: theme.colors.textSecondary,
       fontSize: theme.fontSize.md,

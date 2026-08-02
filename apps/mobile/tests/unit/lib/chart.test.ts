@@ -3,7 +3,9 @@ import {
   buildBars,
   buildPath,
   isRising,
+  nearestPointIndex,
   pointXs,
+  pointYs,
   type ChartPoint,
 } from "@/lib/chart";
 
@@ -109,6 +111,127 @@ describe("pointXs", () => {
 
   test("no points, no positions", () => {
     expect(pointXs([], 400)).toEqual([]);
+  });
+});
+
+describe("pointYs", () => {
+  test("lands exactly on the line's own vertices", () => {
+    // The crosshair dot has to sit *on* the line, so the overlay must
+    // read the same projection the path was built from rather than
+    // re-deriving one that happens to look similar.
+    const points = [
+      pt("2026-01-01", 10),
+      pt("2026-02-01", 90),
+      pt("2026-03-01", 40),
+    ];
+
+    const ys = pointYs(points, 100);
+    const pathYs = [
+      ...buildPath(points, 300, 100).line.matchAll(/[ML][-\d.]+\s([-\d.]+)/g),
+    ].map((m) => Number(m[1]));
+
+    expect(ys.map((y) => Number(y.toFixed(2)))).toEqual(pathYs);
+  });
+
+  test("no points, no positions", () => {
+    expect(pointYs([], 100)).toEqual([]);
+  });
+});
+
+describe("nearestPointIndex", () => {
+  test("resolves by timestamp, where the array index gives a different answer", () => {
+    // Six monthly points and then a jump to December — the shape a
+    // portfolio that stopped trading has. The middle of the chart is
+    // physically next to June, which is drawn at ~45% of the width; index
+    // arithmetic divides the *count* instead and answers April.
+    const points = [
+      pt("2026-01-01", 1),
+      pt("2026-02-01", 2),
+      pt("2026-03-01", 3),
+      pt("2026-04-01", 4),
+      pt("2026-05-01", 5),
+      pt("2026-06-01", 6),
+      pt("2026-12-01", 7),
+    ];
+
+    const xs = pointXs(points, 1000);
+    const resolved = nearestPointIndex(points, 1000, 500);
+
+    expect(resolved).toBe(5);
+    expect(points[resolved ?? 0].timestamp.getMonth()).toBe(5); // June
+    // The point it picked really is the closest one on screen, and the
+    // index-based answer really is a different point.
+    expect(Math.abs(xs[5] - 500)).toBeLessThan(Math.abs(xs[6] - 500));
+    expect(Math.round(0.5 * (points.length - 1))).toBe(3);
+  });
+
+  test("a multi-month hole is empty space, not a compressed run of points", () => {
+    // Three dense days and one point eleven months later. Anywhere in the
+    // hole resolves to whichever edge is nearer — never to a point that
+    // index spacing would have put in the middle.
+    const points = [
+      pt("2026-01-01", 1),
+      pt("2026-01-02", 2),
+      pt("2026-01-03", 3),
+      pt("2026-12-01", 4),
+    ];
+
+    expect(nearestPointIndex(points, 1000, 300)).toBe(2);
+    expect(nearestPointIndex(points, 1000, 700)).toBe(3);
+    // Index-based resolution would have answered 1 and 2 respectively.
+    expect(Math.round(0.3 * 3)).toBe(1);
+    expect(Math.round(0.7 * 3)).toBe(2);
+  });
+
+  test("a weekend gap resolves to Friday or Monday, never into the gap", () => {
+    // Two trading weeks, unpadded across the weekend as the query
+    // interface returns them.
+    const days = [1, 2, 3, 4, 5, 8, 9, 10, 11, 12];
+    const points = days.map((d) =>
+      pt(`2026-06-${String(d).padStart(2, "0")}`, d),
+    );
+
+    // Just inside the Friday side of the gap and just inside the Monday
+    // side of it.
+    expect(nearestPointIndex(points, 1100, 420)).toBe(4);
+    expect(nearestPointIndex(points, 1100, 580)).toBe(5);
+  });
+
+  test("clamps to the ends rather than resolving to nothing", () => {
+    const points = [pt("2026-01-01", 1), pt("2026-02-01", 2)];
+
+    // A pointer beyond either edge — reachable on the last pixel, and
+    // with a bar whose half-width overhangs the plot.
+    expect(nearestPointIndex(points, 300, -40)).toBe(0);
+    expect(nearestPointIndex(points, 300, 999)).toBe(1);
+  });
+
+  test("a single point answers for the whole width", () => {
+    const points = [pt("2026-01-01", 5)];
+
+    expect(nearestPointIndex(points, 300, 0)).toBe(0);
+    expect(nearestPointIndex(points, 300, 300)).toBe(0);
+  });
+
+  test("no points, nothing to resolve", () => {
+    expect(nearestPointIndex([], 300, 150)).toBeNull();
+  });
+
+  test("bars and the line resolve identically, because they share one x-axis", () => {
+    const points = [
+      pt("2026-01-31", 300),
+      pt("2026-02-28", -100),
+      pt("2026-11-30", 900),
+    ];
+
+    // The resolver reads `pointXs`, and a bar is centred on it — so the
+    // pointer over a bar's centre resolves to that bar.
+    const centres = buildBars(points, 600, 100).bars.map(
+      (b) => b.x + b.width / 2,
+    );
+    centres.forEach((centre, i) => {
+      expect(nearestPointIndex(points, 600, centre)).toBe(i);
+    });
   });
 });
 

@@ -238,6 +238,35 @@ export function bucketCountLabel(
   return `${count} ${noun} bucket${count === 1 ? "" : "s"}`;
 }
 
+/**
+ * How one point's date is written when the chart is scrubbed or pinned.
+ *
+ * Keyed on granularity because the bucket *is* the precision: a monthly
+ * point labelled "Mar 31, 2026" claims a day's resolution the series does
+ * not have, and reads as if the month's whole figure happened on the
+ * 31st. A weekly bucket says which week it starts, since "Mar 2" alone
+ * would be indistinguishable from a daily point.
+ */
+export function pointDateLabel(date: Date, granularity: Granularity): string {
+  switch (granularity) {
+    case "yearly":
+      return String(date.getFullYear());
+    case "monthly":
+      return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    case "weekly":
+      return `Week of ${date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })}`;
+    case "daily":
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+  }
+}
+
 // ─── Custom range ─────────────────────────────────────────────
 
 export type CustomRangeResult =
