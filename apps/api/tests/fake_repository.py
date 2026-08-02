@@ -1,7 +1,11 @@
+from datetime import datetime
+
 from myapp.domain.model import Account, Instrument, Transaction
+from myapp.domain.price import PriceBar
 from myapp.domain.repository import (
     AccountRepository,
     InstrumentRepository,
+    PriceHistoryRepository,
     TransactionRepository,
 )
 
@@ -61,3 +65,21 @@ class FakeTransactionRepository(TransactionRepository):
 
     def add(self, transaction: Transaction) -> None:
         self._transactions.append(transaction)
+
+
+class FakePriceHistoryRepository(PriceHistoryRepository):
+    def __init__(self) -> None:
+        self._bars: dict[str, list[PriceBar]] = {}
+        self._last_fetched_at: dict[str, datetime] = {}
+
+    def get_bars(self, instrument_id: str) -> list[PriceBar]:
+        return list(self._bars.get(instrument_id, []))
+
+    def add_bars(self, instrument_id: str, bars: list[PriceBar]) -> None:
+        self._bars.setdefault(instrument_id, []).extend(bars)
+
+    def get_last_fetched_at(self, instrument_id: str) -> datetime | None:
+        return self._last_fetched_at.get(instrument_id)
+
+    def set_last_fetched_at(self, instrument_id: str, when: datetime) -> None:
+        self._last_fetched_at[instrument_id] = when
