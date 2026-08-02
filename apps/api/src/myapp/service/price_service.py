@@ -1,9 +1,15 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
+from myapp.domain.model import AssetClass
 from myapp.domain.price import PriceBar, PriceSource, is_fetch_worth_attempting
 from myapp.domain.repository import InstrumentRepository, PriceHistoryRepository
+
+# Window used by get_latest_price to find the most recent bar — wide enough
+# to cross a weekend or a short holiday gap.
+_LATEST_PRICE_LOOKBACK = timedelta(days=7)
 
 
 class InstrumentNotFoundError(Exception):
@@ -68,3 +74,31 @@ class PriceService:
         return sorted(
             (b for b in cached_bars if start <= b.date <= end), key=lambda b: b.date
         )
+
+    def get_latest_price(self, instrument_id: str) -> PriceBar | None:
+        """The most recent known price for an instrument. CASH is priced
+        at a hardcoded 1 — its price is definitional, not a market fact,
+        and there's no real ticker for it to fetch (see cash_service.py's
+        module docstring).
+
+        Triggers get_price_history over a recent window purely to let its
+        lazy-fetch logic pull in anything new — but the result is read
+        back from ALL cached bars, not filtered to that window. A real
+        cached price older than the window (a rarely-traded instrument, or
+        a forward-gap fetch declined by the staleness policy) is still the
+        latest known price and must not be treated as "no data" just
+        because it falls outside an arbitrary lookback range.
+        """
+        instrument = self.instrument_repo.get(instrument_id)
+        if instrument is None:
+            raise InstrumentNotFoundError(f"Instrument {instrument_id!r} not found")
+
+        if instrument.asset_class == AssetClass.CASH:
+            return PriceBar(date=self.clock().date(), close=Decimal(1))
+
+        end = self.clock().date()
+        start = end - _LATEST_PRICE_LOOKBACK
+        self.get_price_history(instrument_id, start, end)
+
+        cached_bars = self.price_history_repo.get_bars(instrument_id)
+        return max(cached_bars, key=lambda b: b.date) if cached_bars else None

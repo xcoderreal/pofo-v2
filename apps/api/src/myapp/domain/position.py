@@ -64,6 +64,24 @@ class Lot:
     def is_closed(self) -> bool:
         return self.quantity_remaining == 0
 
+    @property
+    def realized_gain(self) -> Decimal:
+        """Sum of (closing price - opening price) * quantity across every
+        close event against this lot. Zero for a lot with no closes yet."""
+        return sum(
+            (
+                (closing_transaction.price - self.opening_transaction.price) * qty
+                for closing_transaction, qty in self.closes
+            ),
+            Decimal(0),
+        )
+
+    def unrealized_gain(self, current_price: Decimal) -> Decimal:
+        """(current price - opening price) * quantity still open. Zero once
+        the lot is fully closed."""
+        open_price = self.opening_transaction.price
+        return (current_price - open_price) * self.quantity_remaining
+
     def close(self, transaction: Transaction, quantity: Decimal) -> None:
         if (
             transaction.account_id != self.opening_transaction.account_id
@@ -104,6 +122,17 @@ class Position:
             ),
             Decimal(0),
         )
+
+    @property
+    def realized_gain(self) -> Decimal:
+        return sum((lot.realized_gain for lot in self.lots), Decimal(0))
+
+    def unrealized_gain(self, current_price: Decimal) -> Decimal:
+        """The documented Composite metric (docs/domain-model.md § Gains):
+        equity - cost_basis, built from exactly those two primitives —
+        not a second, independent fold over lots."""
+        equity = current_price * self.share_count
+        return equity - self.cost_basis
 
 
 def compute_lots(

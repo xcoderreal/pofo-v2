@@ -168,6 +168,61 @@ class TestLotClose:
             lot.close(mismatched_sell, Decimal("5"))
 
 
+class TestLotGains:
+    def test_realized_gain_is_zero_for_a_fully_open_lot(self) -> None:
+        from myapp.domain.position import Lot
+
+        buy = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        lot = Lot(opening_transaction=buy)
+
+        assert lot.realized_gain == Decimal("0")
+
+    def test_realized_gain_reflects_price_difference_on_a_full_close(self) -> None:
+        from myapp.domain.position import Lot
+
+        buy = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        sell = _sell("t2", "acc1", "goog", "10", "150", days=1)
+        lot = Lot(opening_transaction=buy)
+        lot.close(sell, Decimal("10"))
+
+        assert lot.realized_gain == Decimal("500")  # (150 - 100) * 10
+
+    def test_realized_gain_sums_multiple_partial_closes(self) -> None:
+        from myapp.domain.position import Lot
+
+        buy = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        sell1 = _sell("t2", "acc1", "goog", "4", "150", days=1)
+        sell2 = _sell("t3", "acc1", "goog", "6", "80", days=2)
+        lot = Lot(opening_transaction=buy)
+        lot.close(sell1, Decimal("4"))
+        lot.close(sell2, Decimal("6"))
+
+        # (150-100)*4 = 200, (80-100)*6 = -120 -> 80
+        assert lot.realized_gain == Decimal("80")
+
+    def test_unrealized_gain_is_zero_for_a_fully_closed_lot(self) -> None:
+        from myapp.domain.position import Lot
+
+        buy = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        sell = _sell("t2", "acc1", "goog", "10", "150", days=1)
+        lot = Lot(opening_transaction=buy)
+        lot.close(sell, Decimal("10"))
+
+        assert lot.unrealized_gain(Decimal("999")) == Decimal("0")
+
+    def test_unrealized_gain_uses_the_remaining_quantity_at_the_given_price(
+        self,
+    ) -> None:
+        from myapp.domain.position import Lot
+
+        buy = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        sell = _sell("t2", "acc1", "goog", "4", "150", days=1)
+        lot = Lot(opening_transaction=buy)
+        lot.close(sell, Decimal("4"))
+
+        assert lot.unrealized_gain(Decimal("120")) == Decimal("120")  # (120-100)*6
+
+
 class TestComputePosition:
     def test_share_count_and_cost_basis_reflect_only_open_lots(self) -> None:
         buy1 = _buy("t1", "acc1", "goog", "10", "100", days=0)
@@ -200,3 +255,30 @@ class TestComputePosition:
 
         assert position.share_count == Decimal("0")
         assert position.cost_basis == Decimal("0")
+
+    def test_realized_gain_sums_across_all_lots(self) -> None:
+        buy1 = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        buy2 = _buy("t2", "acc1", "goog", "10", "50", days=1)
+        sell1 = _sell("t3", "acc1", "goog", "10", "150", days=2)  # closes buy1
+        sell2 = _sell("t4", "acc1", "goog", "5", "40", days=3)  # partially closes buy2
+
+        position = compute_position("acc1", "goog", [buy1, buy2, sell1, sell2])
+
+        # (150-100)*10 = 500, (40-50)*5 = -50 -> 450
+        assert position.realized_gain == Decimal("450")
+
+    def test_unrealized_gain_sums_only_open_lots_at_the_given_price(self) -> None:
+        buy1 = _buy("t1", "acc1", "goog", "10", "100", days=0)
+        buy2 = _buy("t2", "acc1", "goog", "10", "50", days=1)
+        sell = _sell("t3", "acc1", "goog", "10", "150", days=2)  # closes buy1 entirely
+
+        position = compute_position("acc1", "goog", [buy1, buy2, sell])
+
+        # only buy2's 10 shares remain open, at a current price of 80
+        assert position.unrealized_gain(Decimal("80")) == Decimal("300")
+
+    def test_empty_position_has_zero_gains(self) -> None:
+        position = compute_position("acc1", "goog", [])
+
+        assert position.realized_gain == Decimal("0")
+        assert position.unrealized_gain(Decimal("100")) == Decimal("0")
